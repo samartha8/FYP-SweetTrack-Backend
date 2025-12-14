@@ -1,94 +1,154 @@
-import bcrypt from 'bcryptjs';
+// server.js - Main backend server file
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
-import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+// --- Fix __dirname for ES modules ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- Load environment variables ---
+dotenv.config({ path: path.join(__dirname, '.env'), override: true });
+
+// --- Check required env vars ---
+if (!process.env.MONGO_URI) {
+  console.error('❌ MONGO_URI not set in .env');
+  process.exit(1);
+}
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'your_jwt_secret') {
+  console.error('❌ JWT_SECRET not set or using default value in .env');
+  console.error('   Please set a secure random JWT_SECRET in your .env file');
+  process.exit(1);
+}
+
+// Check Google OAuth configuration (optional - won't fail if not set)
+if (!process.env.GOOGLE_CLIENT_ID) {
+  console.warn('⚠️  GOOGLE_CLIENT_ID not set - Google Fit features will not work');
+  console.warn('   Add GOOGLE_CLIENT_ID to backend/.env to enable Google Fit');
+} else {
+  console.log('✅ Google OAuth configured (Client ID:', process.env.GOOGLE_CLIENT_ID.substring(0, 20) + '...)');
+}
+
+// --- Import routes ---
+import authRoutes from './src/routes/authRoutes.js';
+import googleFitRoutes from './src/routes/googleFitRoutes.js';
+import healthRoutes from './src/routes/healthRoutes.js';
+import settingsRoutes from './src/routes/settingsRoutes.js';
+import mealRoutes from './src/routes/mealRoutes.js';
+import notificationRoutes from './src/routes/notificationRoutes.js';
+import cron from 'node-cron';
+import { evaluateGoalsForAllUsers } from './src/controllers/notificationController.js';
+import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
 
 const app = express();
 
-// --- CORS setup for dynamic localhost origins ---
+// --- Middleware ---
+
+// CORS setup for localhost and mobile apps
 app.use(cors({
   origin: function(origin, callback) {
-    // allow requests with no origin (like Postman or mobile apps)
-    if (!origin) return callback(null, true);
-    // allow all localhost ports
+    if (!origin) return callback(null, true); // Postman / mobile apps
     if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+    if (/^http:\/\/10\.0\.2\.2:\d+$/.test(origin)) return callback(null, true); // Android emulator
+    if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return callback(null, true); // LAN devices
     callback(new Error('Not allowed by CORS'), false);
   },
   credentials: true,
 }));
 
-// parse JSON bodies
+// Parse JSON
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Static assets for uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // --- MongoDB connection ---
-const MONGO_URI = process.env.MONGO_URI || 'your-mongo-uri-here';
+const MONGO_URI = process.env.MONGO_URI;
+
 mongoose.connect(MONGO_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// --- JWT secret ---
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
-
-// --- User Schema ---
-const userSchema = new mongoose.Schema({
-  name: String,
-  email: { type: String, unique: true },
-  password: String,
-  healthSetupCompleted: { type: Boolean, default: false },
-});
-
-const User = mongoose.model('User', userSchema);
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 // --- Routes ---
 
-// Signup
-app.post('/api/auth/signup', async (req, res) => {
-  const { name, email, password } = req.body;
-  try {
-    const existingUser = await User.findOne({ email });
-    if (existingUser) return res.json({ success: false, message: 'Email already exists' });
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = await User.create({ name, email, password: hashedPassword });
-
-    const token = jwt.sign({ id: newUser._id }, JWT_SECRET, { expiresIn: '7d' });
-
-    res.json({ success: true, user: newUser, token });
-  } catch (err) {
-    console.error('Signup error:', err);
-    res.json({ success: false, message: 'Server error' });
-  }
-});
-
-// Login
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await User.findOne({ email });
-    if (!user) return res.json({ success: false, message: 'Invalid credentials' });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.json({ success: false, message: 'Invalid credentials' });
-
-    const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
-
-    res.json({ success: true, user, token });
-  } catch (err) {
-    console.error('Login error:', err);
-    res.json({ success: false, message: 'Server error' });
-  }
-});
-
-// Test route
+// Health check
 app.get('/', (req, res) => {
-  res.send('Backend running ✅');
+  res.json({
+    success: true,
+    message: 'SweetTrack Backend API is running ✅',
+    version: '1.0.0',
+    endpoints: {
+      auth: '/api/auth',
+      health: '/api/health',
+      settings: '/api/settings',
+      googleFit: '/api/google-fit',
+      meals: '/api/meals',
+      notifications: '/api/notifications',
+    }
+  });
+});
+
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/health', healthRoutes);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/google-fit', googleFitRoutes);
+app.use('/api/meals', mealRoutes);
+app.use('/api/notifications', notificationRoutes);
+
+// --- Error handling middleware ---
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error'
+  });
+});
+
+// --- 404 handler ---
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found'
+  });
 });
 
 // --- Start server ---
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-//end 
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 API available at http://localhost:${PORT}/api`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/`);
+});
+
+// Background goal evaluation every 10 minutes
+cron.schedule('*/10 * * * *', async () => {
+  try {
+    await evaluateGoalsForAllUsers();
+  } catch (err) {
+    console.error('Goal evaluation job failed:', err);
+  }
+});
+
+// Background Google Fit sync every 30 minutes
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    await backgroundSyncGoogleFit();
+  } catch (err) {
+    console.error('Google Fit background sync failed:', err);
+  }
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled Rejection:', err);
+  process.exit(1);
+});
