@@ -1,28 +1,16 @@
 import express from 'express';
-import {
-  registerUser,
-  loginUser,
-  googleSignIn,
-  getCurrentUser,
-  updateProfile,
-  refreshSession,
-  logoutUser
-} from '../controllers/authController.js';
-import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public routes
-router.post('/signup', registerUser);
-router.post('/login', loginUser);
-router.post('/google-signin', googleSignIn);
-router.post('/refresh', refreshSession);
+// Minimal placeholder auth routes. Replace with real implementations.
+const notImplemented = (req, res) => {
+  res.status(501).json({ success: false, message: 'Auth endpoint not implemented on backend.' });
+};
 
-// Protected routes
-router.use(protect);
-router.get('/me', getCurrentUser);
-router.put('/profile', updateProfile);
-router.post('/logout', logoutUser);
-// Note: Google Fit routes moved to /api/google-fit
+router.post('/login', notImplemented);
+router.post('/signup', notImplemented);
+router.post('/refresh', notImplemented);
+router.post('/google-signin', notImplemented);
+router.post('/logout', notImplemented);
 
 export default router;
