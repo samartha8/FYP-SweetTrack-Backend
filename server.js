@@ -1,4 +1,5 @@
 // server.js - Main backend server file
+import 'dotenv/config';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
@@ -30,7 +31,10 @@ if (!process.env.GOOGLE_CLIENT_ID) {
   console.warn('⚠️  GOOGLE_CLIENT_ID not set - Google Fit features will not work');
   console.warn('   Add GOOGLE_CLIENT_ID to backend/.env to enable Google Fit');
 } else {
-  console.log('✅ Google OAuth configured (Client ID:', process.env.GOOGLE_CLIENT_ID.substring(0, 20) + '...)');
+  console.log(
+    '✅ Google OAuth configured (Client ID:',
+    process.env.GOOGLE_CLIENT_ID.substring(0, 20) + '...)'
+  );
 }
 
 // --- Import routes ---
@@ -40,6 +44,7 @@ import healthRoutes from './src/routes/healthRoutes.js';
 import settingsRoutes from './src/routes/settingsRoutes.js';
 import mealRoutes from './src/routes/mealRoutes.js';
 import notificationRoutes from './src/routes/notificationRoutes.js';
+import chatbotRoutes from './src/routes/chatbotRoutes.js'; // ✅ ADDED
 import cron from 'node-cron';
 import { evaluateGoalsForAllUsers } from './src/controllers/notificationController.js';
 import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
@@ -49,16 +54,18 @@ const app = express();
 // --- Middleware ---
 
 // CORS setup for localhost and mobile apps
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin) return callback(null, true); // Postman / mobile apps
-    if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
-    if (/^http:\/\/10\.0\.2\.2:\d+$/.test(origin)) return callback(null, true); // Android emulator
-    if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return callback(null, true); // LAN devices
-    callback(new Error('Not allowed by CORS'), false);
-  },
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // Postman / mobile apps
+      if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
+      if (/^http:\/\/10\.0\.2\.2:\d+$/.test(origin)) return callback(null, true); // Android emulator
+      if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return callback(null, true); // LAN devices
+      callback(new Error('Not allowed by CORS'), false);
+    },
+    credentials: true,
+  })
+);
 
 // Parse JSON
 app.use(express.json());
@@ -70,7 +77,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // --- MongoDB connection ---
 const MONGO_URI = process.env.MONGO_URI;
 
-mongoose.connect(MONGO_URI)
+mongoose
+  .connect(MONGO_URI)
   .then(() => console.log('✅ MongoDB connected successfully'))
   .catch(err => {
     console.error('❌ MongoDB connection error:', err);
@@ -92,7 +100,8 @@ app.get('/', (req, res) => {
       googleFit: '/api/google-fit',
       meals: '/api/meals',
       notifications: '/api/notifications',
-    }
+      chatbot: '/api/chatbot', // ✅ OPTIONAL VISIBILITY
+    },
   });
 });
 
@@ -103,13 +112,14 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/google-fit', googleFitRoutes);
 app.use('/api/meals', mealRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/chatbot', chatbotRoutes); // ✅ ADDED
 
 // --- Error handling middleware ---
 app.use((err, req, res, next) => {
   console.error('Error:', err);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || 'Internal server error'
+    message: err.message || 'Internal server error',
   });
 });
 
@@ -117,7 +127,7 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route not found'
+    message: 'Route not found',
   });
 });
 
@@ -148,7 +158,7 @@ cron.schedule('*/30 * * * *', async () => {
 });
 
 // Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
+process.on('unhandledRejection', err => {
   console.error('Unhandled Rejection:', err);
   process.exit(1);
 });
