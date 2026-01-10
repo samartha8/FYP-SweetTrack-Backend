@@ -11,11 +11,11 @@ const healthSchema = new mongoose.Schema({
   age: {
     type: Number,
     min: 1,
-    max: 120
+    max: 13 // Age category 1-13
   },
-  gender: {
-    type: String,
-    enum: ['Male', 'Female', 'Other', '']
+  sex: {
+    type: Number,
+    enum: [0, 1] // 0=Female, 1=Male
   },
   height: {
     type: Number, // in cm
@@ -29,58 +29,47 @@ const healthSchema = new mongoose.Schema({
   },
   bmi: {
     type: Number,
-    min: 10,
-    max: 100
+    min: 12,
+    max: 98
   },
   // Medical Measurements
-  bloodGlucose: {
-    type: Number, // mg/dL
-    min: 40,
-    max: 600
+  highBP: {
+    type: Number,
+    enum: [0, 1] // 0=No, 1=Yes
   },
-  hba1c: {
-    type: Number, // %
-    min: 0,
-    max: 20
+  highChol: {
+    type: Number,
+    enum: [0, 1] // 0=No, 1=Yes
   },
-  bloodPressure: {
-    systolic: {
-      type: Number,
-      min: 80,
-      max: 250
-    },
-    diastolic: {
-      type: Number,
-      min: 40,
-      max: 150
-    }
-  },
-  cholesterol: {
-    type: String // Can be number or "highchol" text
+  genHlth: {
+    type: Number,
+    min: 1,
+    max: 5 // 1=Excellent, 2=Very Good, 3=Good, 4=Fair, 5=Poor
   },
   // Lifestyle
-  smoking: {
-    type: String,
-    enum: ['Never', 'Former', 'Current', '']
+  smoker: {
+    type: Number,
+    enum: [0, 1] // 0=No, 1=Yes
   },
-  physicalActivityMinutes: {
-    type: Number, // minutes per week
-    min: 0,
-    max: 10000
-  },
-  dailySteps: {
-    type: Number, // steps per day
-    min: 0,
-    max: 100000
+  physActivity: {
+    type: Number,
+    enum: [0, 1] // 0=No, 1=Yes
   },
   // Medical History
-  hypertension: {
-    type: String,
-    enum: ['Yes', 'No', '']
+  heartDiseaseOrAttack: {
+    type: Number,
+    enum: [0, 1] // 0=No, 1=Yes
   },
-  heartDiseaseHistory: {
-    type: String,
-    enum: ['Yes', 'No', '']
+  // Engineered Features
+  hba1cEstimated: {
+    type: Number, // %
+    min: 3.5,
+    max: 15.0
+  },
+  bloodGlucoseEstimated: {
+    type: Number, // mg/dL
+    min: 70,
+    max: 300
   }
 }, { timestamps: true });
 
