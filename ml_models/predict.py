@@ -75,7 +75,7 @@ def predict_diabetes():
         
         # 2. Load model
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(script_dir, 'diabetes_model_best.pkl')
+        model_path = os.path.join(script_dir, 'diabetes_model.pkl')
         
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file not found at: {model_path}")
@@ -99,8 +99,9 @@ def predict_diabetes():
         final_df = df
         
         if expected_features:
-            pima_cols = [c.lower() for c in ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI', 'DiabetesPedigreeFunction', 'Age']]
-            expects_pima = any(c.lower() in pima_cols for c in expected_features)
+            # Only trigger PIMA mapping if it expects specific PIMA factors not found in BRFSS
+            pima_specific_cols = [c.lower() for c in ['Pregnancies', 'SkinThickness', 'Insulin', 'DiabetesPedigreeFunction']]
+            expects_pima = any(c.lower() in pima_specific_cols for c in expected_features)
             
             mapped_successfully = False
             
@@ -148,11 +149,25 @@ def predict_diabetes():
             except:
                 probability = float(prediction)
         
+        risk_score = int(probability * 100)
+        
+        if risk_score <= 33:
+            risk_level = "Low Risk"
+            insights = ["Your clinical metrics look stable.", "Maintain your current healthy habits."]
+        elif risk_score <= 66:
+            risk_level = "Medium Risk"
+            insights = ["Consider reviewing your diet and physical activity.", "Small changes can have a big impact on lowering your risk."]
+        else:
+            risk_level = "High Risk"
+            insights = ["We highly recommend consulting with a healthcare provider.", "Immediate action on diet and exercise is advised."]
+
         result = {
             "success": True,
             "prediction": int(prediction),
             "probability": float(probability),
-            "riskScore": int(probability * 100),
+            "riskScore": risk_score,
+            "riskLevel": risk_level,
+            "insights": insights,
             "used_features": final_df.to_dict(orient='records')[0]
         }
         
