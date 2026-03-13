@@ -3,13 +3,13 @@ import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema(
   {
-    name: { 
-      type: String, 
-      required: [true, 'Please provide a name'] 
+    name: {
+      type: String,
+      required: [true, 'Please provide a name']
     },
 
-    email: { 
-      type: String, 
+    email: {
+      type: String,
       required: [true, 'Please provide an email'],
       unique: true,
       lowercase: true,
@@ -17,7 +17,7 @@ const userSchema = new mongoose.Schema(
       index: true
     },
 
-    password: { 
+    password: {
       type: String,
       required: function () {
         // Required only for email-based accounts
@@ -47,9 +47,9 @@ const userSchema = new mongoose.Schema(
       familyName: String
     },
 
-    healthSetupCompleted: { 
-      type: Boolean, 
-      default: false 
+    healthSetupCompleted: {
+      type: Boolean,
+      default: false
     },
 
     isGoogleFitConnected: {
@@ -57,9 +57,9 @@ const userSchema = new mongoose.Schema(
       default: false
     },
 
-    healthData: { 
-      type: mongoose.Schema.Types.ObjectId, 
-      ref: 'Health' 
+    healthData: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Health'
     },
 
     settings: {
