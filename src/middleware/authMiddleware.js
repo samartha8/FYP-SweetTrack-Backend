@@ -26,6 +26,7 @@ export const protect = async (req, res, next) => {
   // }
 
   if (!token) {
+    console.warn('🔓 Auth: No token provided in header');
     return res.status(401).json({
       success: false,
       message: 'Not authorized, no token provided'
@@ -35,22 +36,24 @@ export const protect = async (req, res, next) => {
   try {
     // Verify token - this will throw if signature is invalid or token is expired
     const decoded = jwt.verify(token, getJWTSecret());
-    
+
     // Get user from token (exclude password)
     req.user = await User.findById(decoded.id).select('-password');
 
     // Validate token version to invalidate old sessions
-    if (!req.user || decoded.tokenVersion !== (req.user.tokenVersion || 0)) {
+    if (!req.user) {
+      console.warn(`🔓 Auth: User not found for ID ${decoded.id}`);
       return res.status(401).json({
         success: false,
-        message: 'Session expired. Please login again.'
+        message: 'User found in token but missing from database. Please login again.'
       });
     }
-    
-    if (!req.user) {
+
+    if (decoded.tokenVersion !== (req.user.tokenVersion || 0)) {
+      console.warn(`🔓 Auth: Version mismatch for ${req.user.email}. Token: ${decoded.tokenVersion}, DB: ${req.user.tokenVersion || 0}`);
       return res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: 'Session expired (version mismatch). Please login again.'
       });
     }
 
