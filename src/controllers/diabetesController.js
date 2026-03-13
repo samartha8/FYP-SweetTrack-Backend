@@ -32,7 +32,29 @@ export const getLatestPrediction = async (req, res) => {
             riskScore: prediction.riskScore,
             riskLevel: prediction.riskLevel,
             insights: prediction.insights,
+            inputData: prediction.inputData,
             timestamp: prediction.createdAt
+        });
+
+    } catch (error) {
+        console.error('Error fetching prediction history:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+
+export const getPredictionHistory = async (req, res) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'Not authorized' });
+        }
+
+        const predictions = await DiabetesPrediction.find({ user: req.user._id })
+            .sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            count: predictions.length,
+            data: predictions
         });
 
     } catch (error) {
@@ -45,6 +67,24 @@ export const predictDiabetes = async (req, res) => {
     try {
         // Pass everything to the flexible Python script
         const inputData = req.body;
+        console.log("📥 [DiabetesController] Input Data:", JSON.stringify(inputData, null, 2));
+
+        // 1. Dynamic Estimation & Pre-processing
+        const bmi = parseFloat(inputData.bmi || 25);
+        const age = parseFloat(inputData.age || 5);
+        const genHlth = parseFloat(inputData.genHlth || 3);
+        const parseFloatSafe = (val) => (val == '1' || val === 1) ? 1 : 0;
+        const highChol = parseFloatSafe(inputData.highChol);
+        const highBP = parseFloatSafe(inputData.highBP);
+
+        // Calculate live estimates based on current profile metrics
+        const hba1c = 4.5 + (bmi - 25) * 0.03 + (age - 7) * 0.15 + genHlth * 0.4 + highChol * 0.8 + highBP * 0.6;
+        const glucose = 85 + (bmi - 25) * 1.2 + (age - 7) * 3.0 + genHlth * 8 + highChol * 15 + highBP * 12;
+
+        // Patch the input data so Python uses the NEW estimates
+        inputData.hba1cEstimated = hba1c;
+        inputData.bloodGlucoseEstimated = glucose;
+        inputData.glucose = glucose;
 
         // Path to python script
         const pythonScriptPath = path.join(__dirname, '../../ml_models/predict.py');
@@ -55,7 +95,7 @@ export const predictDiabetes = async (req, res) => {
         let dataString = '';
         let errorString = '';
 
-        // Send data to python script via stdin
+        // Send UPDATED data to python script via stdin
         pythonProcess.stdin.write(JSON.stringify(inputData));
         pythonProcess.stdin.end();
 
@@ -79,6 +119,10 @@ export const predictDiabetes = async (req, res) => {
             console.log("Python stderr:", errorString);
 
             try {
+                console.log("🐍 [DiabetesController] Raw Python Output:", `"${dataString}"`);
+                if (!dataString) {
+                    throw new Error(`Python script returned no output. Stderr: ${errorString}`);
+                }
                 const result = JSON.parse(dataString);
 
                 if (!result.success) {
@@ -87,39 +131,75 @@ export const predictDiabetes = async (req, res) => {
 
                 // --- POST-PROCESSING ---
 
-                // 1. Determine Risk Level from ML
-                const mlProbability = result.probability || 0;
-                let riskLevel = 'Low';
-                if (mlProbability >= 0.6) riskLevel = 'High';
-                else if (mlProbability >= 0.2) riskLevel = 'Moderate';
+                // 1. Determine Risk Level from ML Probability
+                // STRICT MAPPING:
+                // No Risk: 0-33% (Score 0-33)
+                // Medium Risk: 34-66% (Score 34-66)
+                // High Risk: 67-100% (Score 67-100)
 
-                // 2. Clinical Overrides (Safety Net)
-                // The Pima model might miss high-risk cases due to missing features (like HbA1c) or population bias.
-                // We apply clinical guidelines to ensure safety.
-                const glucose = inputData.glucose || inputData.bloodGlucoseEstimated || 0;
-                const hba1c = inputData.hba1cEstimated || 0;
-                const bmi = parseFloat(inputData.bmi || 0);
-                const isHighBP = inputData.highBP == '1' || inputData.highBP === 1 || inputData.bloodPressure > 130;
+                const mlProbability = result.probability || 0;
+                let riskScore = 0;
+                let riskLevel = 'Low Risk'; // Changed from 'No Risk' to 'Low Risk'
+
+                // 1. Initial ML-based Level Determination
+                if (mlProbability >= 0.67) {
+                    riskLevel = 'High Risk';
+                } else if (mlProbability > 0.33) {
+                    riskLevel = 'Medium Risk';
+                }
+
+                // 2. Clinical Overrides (Already Calculated Above)
+                const isHighBP = highBP === 1 || inputData.bloodPressure > 130;
 
                 let clinicalOverride = false;
 
                 // Rule 1: Diabetes Range (High Risk)
                 if (hba1c >= 6.5 || glucose >= 200) {
-                    riskLevel = 'High';
+                    riskLevel = 'High Risk';
                     clinicalOverride = true;
                 }
-                // Rule 2: Prediabetes Range (Moderate Risk minimum)
+                // Rule 2: Prediabetes Range (Medium Risk)
                 else if (hba1c >= 5.7 || glucose >= 140) {
-                    if (riskLevel === 'Low') riskLevel = 'Moderate';
+                    if (riskLevel === 'Low Risk') {
+                        riskLevel = 'Medium Risk';
+                    }
                     clinicalOverride = true;
                 }
+
+                // 3. Proportional Scaling Logic
+                const scaleScore = (prob, level, override) => {
+                    // If ML Model is already very confident (e.g. > 90%), trust it
+                    if (prob > 0.9) {
+                        return prob * 100;
+                    }
+
+                    // If no override and logic matches bucket, return raw probability %
+                    if (!override) {
+                        return prob * 100;
+                    }
+
+                    // If Override (e.g. Low ML prob but High Clinical Risk), map to severity range
+                    if (level === 'High Risk') {
+                        // Blend ML probability with clinical floor of 67
+                        // formula: 67 + (prob * 33) -> This pushes 0.93 to 97.7!
+                        // FIX: If prob is high, just return prob * 100
+                        if (prob > 0.67) return prob * 100;
+                        return 67 + (prob * 33);
+                    } else if (level === 'Medium Risk') {
+                        return 34 + (prob * 32); // Map 0-1 to 34-66
+                    } else {
+                        return prob * 33; // Fallback
+                    }
+                };
+
+                riskScore = Math.round(scaleScore(mlProbability, riskLevel, clinicalOverride));
 
                 // 3. Generate Insights
                 const insights = [];
 
                 if (clinicalOverride) {
                     insights.push('Risk level elevated based on clinical guidelines (HbA1c/Glucose).');
-                } else if (riskLevel === 'High') {
+                } else if (riskLevel === 'High Risk') {
                     insights.push('Your calculated risk is High based on ML factors. Please consult a healthcare provider.');
                 }
 
@@ -138,14 +218,12 @@ export const predictDiabetes = async (req, res) => {
                     insights.push('High blood pressure is a contributing risk factor.');
                 }
 
-                if (insights.length === 0 && riskLevel === 'Low') {
+                if (insights.length === 0 && riskLevel === 'No Risk') {
                     insights.push('Great job! Your metrics indicate a healthy profile.');
                 }
 
-                // Adjust Risk Score for display if overridden (ensure it matches level)
-                let finalScore = result.riskScore;
-                if (riskLevel === 'High' && finalScore < 60) finalScore = 85;
-                if (riskLevel === 'Moderate' && finalScore < 20) finalScore = 45;
+                const finalScore = riskScore;
+                const finalInsights = insights.length > 0 ? insights : ['Your metrics indicate a healthy profile.'];
 
                 // 3. Save to History (if user is authenticated)
                 if (req.user) {
@@ -155,11 +233,12 @@ export const predictDiabetes = async (req, res) => {
                             inputData: inputData, // Save raw input for debug/retraining
                             prediction: result.prediction,
                             probability: result.probability,
-                            riskScore: result.riskScore,
+                            riskScore: finalScore,
                             riskLevel: riskLevel,
-                            insights: insights
+                            insights: finalInsights
                         });
                         await predictionRecord.save();
+                        console.log('✅ Prediction saved to history:', predictionRecord._id);
                     } catch (dbErr) {
                         console.error('Failed to save prediction history:', dbErr);
                         // Don't fail the request, just log
@@ -170,9 +249,10 @@ export const predictDiabetes = async (req, res) => {
                     success: true,
                     prediction: result.prediction,
                     probability: result.probability,
-                    riskScore: result.riskScore,
+                    riskScore: finalScore,
                     riskLevel: riskLevel,
-                    insights: insights,
+                    insights: finalInsights,
+                    inputData: inputData,
                     message: result.prediction === 1 ?
                         'Prediction indicates potential risk.' :
                         'Prediction indicates low risk.'
