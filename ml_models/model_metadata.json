@@ -1,0 +1,20 @@
+{
+  "model_name": "EfficientNetB0",
+  "num_classes": 166,
+  "input_shape": [
+    224,
+    224,
+    3
+  ],
+  "accuracy": 0.8334657549858093,
+  "top5_accuracy": 0.9538866281509399,
+  "inference_time_ms": 154.72002744674683,
+  "training_date": "2026-02-16T09:34:46.359012",
+  "preprocessing": {
+    "resize": [
+      224,
+      224
+    ],
+    "normalization": "ImageNet"
+  }
+}
