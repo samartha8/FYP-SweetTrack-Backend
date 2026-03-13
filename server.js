@@ -47,7 +47,7 @@ import mealRoutes from './src/routes/mealRoutes.js';
 import notificationRoutes from './src/routes/notificationRoutes.js';
 import chatbotRoutes from './src/routes/chatbotRoutes.js';
 import diabetesRoutes from './src/routes/diabetesRoutes.js';
-import ehrRoutes from './src/routes/ehrRoutes.js';
+import recordRoutes from './src/routes/recordRoutes.js';
 import { evaluateGoalsForAllUsers } from './src/controllers/notificationController.js';
 import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
 
@@ -88,6 +88,18 @@ app.use(
 // Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
+  if (req.method !== 'GET') {
+    // Log body keys (avoiding logging whole binary files)
+    const bodyKeys = req.body ? Object.keys(req.body) : [];
+    console.log('   Body Keys:', bodyKeys);
+    if (req.file) console.log('   Uploaded File:', req.file.filename);
+  }
+  next();
+});
 
 // Initialize Passport (for Google OAuth)
 app.use(passport.initialize());
@@ -150,7 +162,7 @@ app.use('/api/meals', mealRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/diabetes', diabetesRoutes);
-app.use('/api/ehr', ehrRoutes);
+app.use('/api/records', recordRoutes);
 
 // ========================================
 // ERROR HANDLING
