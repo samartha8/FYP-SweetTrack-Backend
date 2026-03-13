@@ -1,9 +1,9 @@
 import mongoose from 'mongoose';
 
 const healthSchema = new mongoose.Schema({
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true,
     unique: true
   },
@@ -59,6 +59,12 @@ const healthSchema = new mongoose.Schema({
   heartDiseaseOrAttack: {
     type: Number,
     enum: [0, 1] // 0=No, 1=Yes
+  },
+  pregnancies: {
+    type: Number,
+    min: 0,
+    max: 20,
+    default: 0
   },
   // Engineered Features
   hba1cEstimated: {
