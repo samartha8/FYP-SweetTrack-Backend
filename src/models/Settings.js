@@ -1,15 +1,15 @@
 import mongoose from 'mongoose';
 
 const settingsSchema = new mongoose.Schema({
-  user: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User', 
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
     required: true,
-    unique: true 
+    unique: true
   },
   language: {
     type: String,
-    enum: ['en', 'ne', 'hi'],
+    enum: ['en', 'ne', 'ja', 'hi'],
     default: 'en'
   },
   highContrast: {
