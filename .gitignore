@@ -41,3 +41,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+# ML Models and weights
+ml_models/MobileSAM/
+ml_models/*.pt
+ml_models/*.keras
+ml_models/*.pkl
