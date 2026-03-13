@@ -50,8 +50,8 @@ const diabetesPredictionSchema = new mongoose.Schema({
     },
     riskLevel: {
         type: String,
-        enum: ['Low', 'Moderate', 'High', 'Very High'],
-        default: 'Low'
+        enum: ['No Risk', 'Low Risk', 'Medium Risk', 'High Risk'],
+        required: true
     },
     insights: [{
         type: String // actionable advices
