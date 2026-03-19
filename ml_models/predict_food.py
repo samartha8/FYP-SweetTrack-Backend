@@ -6,19 +6,24 @@ import cv2
 import gc
 import torch
 
-# Force use of tf_keras for legacy Keras 2 support
+# Force use of stable tf_keras for legacy Keras 2 support
+# This prevents "File is not a zip file" errors from Keras 3
 try:
     import tf_keras as keras
     from tf_keras import layers, models
+    from tf_keras.applications.efficientnet import preprocess_input
+    K_SOURCE = "tf_keras"
 except ImportError:
     try:
-        import tensorflow.keras as keras
-        from tensorflow.keras import layers, models
-    except ImportError:
+        # Fallback to standard keras
         import keras
         from keras import layers, models
-
-from keras.applications.efficientnet import preprocess_input
+        from keras.applications.efficientnet import preprocess_input
+        K_SOURCE = "keras"
+    except ImportError:
+        import numpy as np
+        def preprocess_input(x): return x
+        K_SOURCE = "none"
 
 # --- Contextual Mapping for Nepalese Context (Thakali Upgrade) ---
 # Maps standard model classes to Nepalese labels and their specific nutrition keys
@@ -141,11 +146,11 @@ def init_sam():
         sam = sam_model_registry[model_type](checkpoint=SAM_CHECKPOINT)
         sam.to(device="cpu")
         
-        # Accuracy Optimization: 14x14 grid (196 points)
-        # Much better for small bowls in Thakali, while keeping memory in check
+        # Accuracy Optimization: 8x8 grid (64 points)
+        # Sufficient for major food items while being 3x faster than 14x14
         GLOBAL_SAM_GENERATOR = SamAutomaticMaskGenerator(
             model=sam,
-            points_per_side=14, 
+            points_per_side=8, 
             pred_iou_thresh=0.86,
             stability_score_thresh=0.90, # Lowered for better texture detection
             min_mask_region_area=800, # Catch smaller bowls
@@ -274,9 +279,9 @@ def segment_and_classify(image_path):
             
         h_orig, w_orig = image.shape[:2]
         
-        # Optimization: Downscale even further for stability
-        # 512px is much safer for low-RAM systems
-        MAX_SEG_DIM = 512
+        # Optimization: Downscale even further for speed
+        # 416px is a sweet spot for Mobile-SAM speed/accuracy
+        MAX_SEG_DIM = 416
         if max(h_orig, w_orig) > MAX_SEG_DIM:
             scale = MAX_SEG_DIM / max(h_orig, w_orig)
             image_small = cv2.resize(image, (int(w_orig * scale), int(h_orig * scale)), interpolation=cv2.INTER_AREA)
@@ -288,7 +293,7 @@ def segment_and_classify(image_path):
         image_rgb_small = cv2.cvtColor(image_small, cv2.COLOR_BGR2RGB)
         h_small, w_small = image_small.shape[:2]
 
-        debug_print(f"Segmenting {image_path} (Point density: 12x12)...")
+        debug_print(f"Segmenting {image_path} (Point density: 8x8)...")
         import time
         start_seg = time.time()
         masks = GLOBAL_SAM_GENERATOR.generate(image_rgb_small)
@@ -350,10 +355,16 @@ def segment_and_classify(image_path):
         gc.collect()
         
         # Batch Predict
-        debug_print(f"Batch classifying {len(crops)} segments...")
+        # Predict individually to avoid batch hanging issues on some Windows setups
+        debug_print(f"Classifying {len(crops)} segments individually...")
         start_cls = time.time()
-        batch_input = np.stack(crops, axis=0)
-        preds = GLOBAL_MODEL.predict(batch_input, verbose=0)
+        preds = []
+        for i, crop in enumerate(crops):
+            p = GLOBAL_MODEL.predict(np.expand_dims(crop, axis=0), verbose=0)
+            preds.append(p[0])
+            if (i+1) % 5 == 0:
+                debug_print(f"Processed {i+1}/{len(crops)} segments...")
+        
         debug_print(f"Classification took {time.time() - start_cls:.2f}s")
         
         results = []
@@ -408,7 +419,6 @@ def segment_and_classify(image_path):
         # Final memory cleanup
         del masks
         del crops
-        del batch_input
         gc.collect()
         
         return results
