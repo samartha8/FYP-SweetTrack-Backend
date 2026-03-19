@@ -208,7 +208,7 @@ export const getCurrentUser = async (req, res) => {
       });
     }
 
-    res.status(200).json({ success: true, user });
+    res.status(200).json({ success: true, user: sanitizeUser(user) });
   } catch (error) {
     console.error('❌ Get current user error:', error);
     res.status(500).json({
@@ -259,7 +259,8 @@ export const refreshSession = async (req, res) => {
     if (!user || decoded.tokenVersion !== (user.tokenVersion || 0)) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid or expired session'
+        message: 'Invalid or expired session',
+        errorCode: 'VERSION_MISMATCH'
       });
     }
 
