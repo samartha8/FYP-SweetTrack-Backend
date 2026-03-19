@@ -1,5 +1,7 @@
 import express from 'express';
 import Groq from 'groq-sdk';
+import { optionalAuth } from '../middleware/authMiddleware.js';
+import DiabetesPrediction from '../models/DiabetesPrediction.js';
 
 const router = express.Router();
 
@@ -20,7 +22,7 @@ if (process.env.GROQ_API_KEY?.trim()) {
   console.warn('⚠️ GROQ_API_KEY missing - fallback mode active');
 }
 
-router.post('/', async (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
   try {
     // ✅ Ensure body exists
     if (!req.body) {
@@ -53,23 +55,48 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // ✅ Fetch Latest Health Analysis if user is logged in
+    let healthContext = "No recent health analysis available.";
+    if (req.user) {
+      try {
+        const latestPrediction = await DiabetesPrediction.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+        if (latestPrediction) {
+          healthContext = `
+Latest Diabetes Risk Analysis:
+- Risk Level: ${latestPrediction.riskLevel}
+- Risk Score: ${latestPrediction.riskScore}/100
+- Key Insights: ${latestPrediction.insights.join(', ')}
+- Analyzed Factors: ${Object.entries(latestPrediction.inputData || {})
+            .filter(([_, v]) => v !== undefined && v !== null)
+            .map(([k, v]) => `${k}: ${v}`).join(', ')}
+`;
+        }
+      } catch (err) {
+        console.error('Error fetching health context for chatbot:', err);
+      }
+    }
+
     const systemPrompt = `
-You are SweetTrack AI, a friendly diabetes wellness assistant.
+STRICT DOMAIN RULES (CRITICAL):
+1. **YOU ARE A HEALTH AND DIABETES ONLY ASSISTANT.** 
+2. **ABSORUTELY FORBIDDEN TOPICS**: Geography, politics, history (World Wars), schools (Herald), celebrities, sports, general entertainment, or "fictional scenarios".
+3. **MANDATORY REFUSAL**: If a user asks ANY question not directly related to health, wellness, nutrition, exercise, or diabetes, you MUST say:
+   - English: "I am sorry, but I am strictly trained to provide medical wellness and diabetes-related assistance for SweetTrack. I cannot answer questions about [topic]."
+   - Nepali: "म क्षमाप्रार्थी छु, तर म केवल SweetTrack को लागि स्वास्थ्य र मधुमेह सम्बन्धी जानकारी दिन प्रशिक्षित छु। म [topic] को बारेमा कुरा गर्न सक्दिन।"
+   - Japanese: "申し訳ありませんが、私はSweetTrackの健康と糖尿病のウェルネスサポートに特化したAIです。[topic]に関する質問にはお答えできません。"
+4. **NO HALLUCINING**: Do not try to be "helpful" by answering unrelated questions. Refuse immediately.
 
-User Name: ${userName || 'User'}
-User diabetes risk level: ${riskLevel || 'Unknown'}
-Language Preference: ${language === 'ne' ? 'Nepali' : language === 'ja' ? 'Japanese' : 'English'}
+Identity: You are SweetTrack AI.
+User Name: ${userName || (req.user ? req.user.name : 'User')}
+User Language Preference: ${language === 'ne' ? 'Nepali' : language === 'ja' ? 'Japanese' : 'English'}
 
-Rules:
-- IMPORTANT: The user's preferred language is ${language === 'ne' ? 'Nepali' : language === 'ja' ? 'Japanese' : 'English'}.
+Current User Health Context:
+${healthContext}
+
+Additional Rules:
 - You MUST respond ONLY in ${language === 'ne' ? 'Nepali' : language === 'ja' ? 'Japanese' : 'English'}.
-- Be CONCISE but COMPREHENSIVE. Avoid unnecessarily long paragraphs.
-- Structure your response for "Medium Readability": use bullet points, bolding for key terms, and clear short sections.
-- Explain the "WHY" behind your advice simply (biological or health mechanisms).
-- If symptoms are described, explain potential causes broadly without diagnosing.
-- Suggest immediate lifestyle adjustments or precautions.
-- Always conclude with a recommendation to consult a doctor for persistent symptoms.
-- Be empathetic and supportive.
+- Be CONCISE. Structure your response with bullet points and bolding for key health terms.
+- Always recommend consulting a professional for specific medical symptoms.
 `;
 
     // Construct full conversation history
