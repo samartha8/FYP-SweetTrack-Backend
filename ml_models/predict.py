@@ -2,9 +2,18 @@ import sys
 import json
 import pickle
 import os
-import pandas as pd
-import numpy as np
+import traceback
 import warnings
+
+# Use robust imports for data science libraries
+try:
+    import pandas as pd
+    import numpy as np
+except ImportError:
+    # Minimal fallbacks for linting
+    class pd: 
+        class DataFrame: pass
+    class np: pass
 
 # Disable warnings
 warnings.filterwarnings("ignore")
@@ -126,15 +135,38 @@ def predict_diabetes():
                 sys.stderr.write(f"Input Keys Normalized: {list(input_map.keys())}\n")
                 sys.stderr.write(f"Expected Features: {expected_features}\n")
 
+                # Define SweetTrack standard defaults for missing features
+                # Only use fields that are conceptually aligned with our health setup
+                standard_defaults = {
+                    'cholcheck': 1,
+                    'anyhealthcare': 1,
+                    'nodocbccost': 0,
+                    'diffwalk': 0,
+                    'stroke': 0,
+                    'hvyalcoholconsump': 0,
+                    'menthlth': 0,
+                    'physhlth': 0,
+                    'fruits': 1,
+                    'veggies': 1,
+                }
+
                 for ef in expected_features:
                     ef_norm = ef.lower().replace('_', '')
-                    val = 0
+                    
+                    # 1. Try to find in input data
                     if ef_norm in input_map:
                         val = input_map[ef_norm]
+                    # 2. Try to find in standard defaults (only for non-essential BRFSS fields)
+                    elif ef_norm in standard_defaults:
+                        val = standard_defaults[ef_norm]
+                    # 3. Fallback to 0 (neutral for most binary/count features)
+                    else:
+                        val = 0
+                        
                     try:
                         val = float(val)
                     except (ValueError, TypeError):
-                        val = 0
+                        pass
                     final_input[ef] = val
                     
                 final_df = pd.DataFrame([final_input])
@@ -151,15 +183,15 @@ def predict_diabetes():
         
         risk_score = int(probability * 100)
         
-        if risk_score <= 33:
-            risk_level = "Low Risk"
-            insights = ["Your clinical metrics look stable.", "Maintain your current healthy habits."]
-        elif risk_score <= 66:
+        if int(prediction) == 1 or risk_score >= 70:
+            risk_level = "High Risk"
+            insights = ["We highly recommend consulting with a healthcare provider.", "Immediate action on diet and exercise is advised."]
+        elif risk_score >= 35:
             risk_level = "Medium Risk"
             insights = ["Consider reviewing your diet and physical activity.", "Small changes can have a big impact on lowering your risk."]
         else:
-            risk_level = "High Risk"
-            insights = ["We highly recommend consulting with a healthcare provider.", "Immediate action on diet and exercise is advised."]
+            risk_level = "Low Risk"
+            insights = ["Your clinical metrics look stable.", "Maintain your current healthy habits."]
 
         result = {
             "success": True,
