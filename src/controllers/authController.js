@@ -288,10 +288,13 @@ export const googleCallback = async (req, res) => {
   try {
     // User attached by Passport after successful Google OAuth
     const user = req.user;
+    
+    // Retrieve dynamic returnUrl from state, defaulting to prod intent
+    const returnUrl = req.query.state || 'diabetesapp://auth/callback';
 
     if (!user) {
       console.error('❌ No user found after Google OAuth');
-      return res.redirect(`diabetesapp://auth/error?message=${encodeURIComponent('Authentication failed')}`);
+      return res.redirect(`${returnUrl.replace('callback', 'error')}?message=${encodeURIComponent('Authentication failed')}`);
     }
 
     // Issue JWT tokens
@@ -302,7 +305,7 @@ export const googleCallback = async (req, res) => {
     console.log('   - Health setup completed:', user.healthSetupCompleted);
 
     // Redirect back to app with tokens
-    const redirectUrl = `diabetesapp://auth/callback?token=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}&needsHealthSetup=${!user.healthSetupCompleted}`;
+    const redirectUrl = `${returnUrl}?token=${encodeURIComponent(accessToken)}&refreshToken=${encodeURIComponent(refreshToken)}&needsHealthSetup=${!user.healthSetupCompleted}`;
 
     res.redirect(redirectUrl);
   } catch (error) {
