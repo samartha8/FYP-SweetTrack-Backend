@@ -28,12 +28,21 @@ if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
 }
 
 if (!process.env.GOOGLE_AUTH_CLIENT_ID || !process.env.GOOGLE_AUTH_CLIENT_SECRET) {
-  console.warn('⚠️  Google OAuth not configured - Google Sign-In will not work');
-  console.warn('   Add GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env');
+  console.warn('⚠️  Google OAuth (Login) not configured - Google Sign-In will not work');
+  console.warn('   Add GOOGLE_AUTH_CLIENT_ID and GOOGLE_AUTH_CLIENT_SECRET to .env');
 } else {
-  console.log('✅ Google OAuth configured');
+  console.log('✅ Google OAuth (Login) configured');
   console.log('   - Client ID:', process.env.GOOGLE_AUTH_CLIENT_ID.substring(0, 30) + '...');
   console.log('   - Redirect URI:', process.env.GOOGLE_AUTH_REDIRECT_URI);
+}
+
+// Google Fit (Wellness) Integration Check
+if (!process.env.GOOGLE_FIT_CLIENT_ID || !process.env.GOOGLE_FIT_CLIENT_SECRET) {
+  console.warn('⚠️  Google Fit (Wellness) not configured');
+} else {
+  console.log('✅ Google Fit (Wellness) configured');
+  console.log('   - Client ID:', process.env.GOOGLE_FIT_CLIENT_ID.substring(0, 30) + '...');
+  console.log('   - Redirect URI:', process.env.GOOGLE_FIT_REDIRECT_URI);
 }
 
 // ========================================
