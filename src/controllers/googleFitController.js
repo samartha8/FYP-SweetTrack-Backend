@@ -1,6 +1,7 @@
 import GoogleFit from "../models/GoogleFit.js";
 import HealthMetric from "../models/HealthMetric.js";
 import User from "../models/User.js";
+import MealLog from "../models/MealLog.js";
 import {
   exchangeCodeForTokens,
   getAuthorizationUrl,
@@ -127,6 +128,18 @@ export const handleOAuthCallback = async (req, res) => {
       googleFit.isActive = true;
       googleFit.lastSync = new Date();
       dbOperations.push(googleFit.save());
+    } else {
+      // Create NEW connection
+      googleFit = new GoogleFit({
+        user: userId,
+        accessToken: tokenData.accessToken,
+        refreshToken: tokenData.refreshToken, // This should exist on first connection
+        tokenExpiry: tokenExpiry,
+        scopes: GOOGLE_FIT_SCOPES,
+        isActive: true,
+        lastSync: new Date()
+      });
+      dbOperations.push(googleFit.save());
     }
 
     // Update user's Google Fit connection status (runs in parallel with GoogleFit save)
@@ -159,118 +172,114 @@ if (!savedConnection || !savedConnection.accessToken) {
     // Connection verified successfully - log to console and send success page
     console.log("✅ Google Fit Connected Successfully - User ID:", userId);
 
-    const deepLinkUrl = `diabetesapp://google-fit-connected?success=true`;
-    // res.send(`
-    //   <!DOCTYPE html>
-    //   <html>
-    //     <head>
-    //       <meta charset="utf-8">
-    //       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    //       <title>Google Fit Connected</title>
-    //       <style>
-    //         body {
-    //           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    //           display: flex;
-    //           flex-direction: column;
-    //           align-items: center;
-    //           justify-content: center;
-    //           min-height: 100vh;
-    //           margin: 0;
-    //           padding: 20px;
-    //           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    //           color: white;
-    //         }
-    //         .container {
-    //           text-align: center;
-    //           max-width: 400px;
-    //         }
-    //         h1 { margin: 0 0 10px 0; font-size: 24px; }
-    //         p { margin: 10px 0; opacity: 0.9; font-size: 16px; }
-    //         .button {
-    //           display: inline-block;
-    //           margin-top: 20px;
-    //           padding: 12px 24px;
-    //           background: white;
-    //           color: #667eea;
-    //           text-decoration: none;
-    //           border: none;
-    //           border-radius: 8px;
-    //           font-weight: 600;
-    //           font-size: 16px;
-    //           cursor: pointer;
-    //           font-family: inherit;
-    //         }
-    //         .button:hover { opacity: 0.9; }
-    //         .button:active { transform: scale(0.98); }
-    //         .hidden { display: none; }
-    //         .note {
-    //           margin-top: 20px;
-    //           font-size: 14px;
-    //           opacity: 0.8;
-    //         }
-    //       </style>
-    //     </head>
-    //     <body>
-    //       <div class="container">
-    //         <h1>✅ Google Fit Connected!</h1>
-    //         <p id="status">Connection verified successfully</p>
-    //         <button id="openButton" class="button" onclick="openApp()">Open App</button>
-    //         <p class="note" id="note"></p>
-    //         <script>
-    //           (function() {
-    //             // Log success to console
-    //             console.log('✅ Google Fit Connected Successfully');
+    const deepLinkUrl = `diabetesapp://auth/callback/google-fit?success=true`;
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Google Fit Connected</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              padding: 20px;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+            }
+            .container {
+              text-align: center;
+              max-width: 400px;
+            }
+            h1 { margin: 0 0 10px 0; font-size: 24px; }
+            p { margin: 10px 0; opacity: 0.9; font-size: 16px; }
+            .button {
+              display: inline-block;
+              margin-top: 20px;
+              padding: 12px 24px;
+              background: white;
+              color: #667eea;
+              text-decoration: none;
+              border: none;
+              border-radius: 8px;
+              font-weight: 600;
+              font-size: 16px;
+              cursor: pointer;
+              font-family: inherit;
+            }
+            .button:hover { opacity: 0.9; }
+            .button:active { transform: scale(0.98); }
+            .hidden { display: none; }
+            .note {
+              margin-top: 20px;
+              font-size: 14px;
+              opacity: 0.8;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>✅ Google Fit Connected!</h1>
+            <p id="status">Connection verified successfully</p>
+            <button id="openButton" class="button" onclick="openApp()">Return to App</button>
+            <p class="note" id="note"></p>
+            <script>
+              (function() {
+                // Log success to console
+                console.log('✅ Google Fit Connected Successfully');
 
-    //             const deepLink = "${deepLinkUrl}";
-    //             const statusEl = document.getElementById('status');
-    //             const noteEl = document.getElementById('note');
+                const deepLink = "${deepLinkUrl}";
+                const statusEl = document.getElementById('status');
+                const noteEl = document.getElementById('note');
 
-    //             // Check if we're on mobile
-    //             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                // Check if we're on mobile
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-    //             noteEl.textContent = isMobile
-    //               ? "Tap the button above to return to the app."
-    //               : 'Please open this page on your mobile device.';
+                noteEl.textContent = isMobile
+                  ? "Tap the button above to return to the app."
+                  : 'Please open this page on your mobile device.';
 
-    //             // Suppress console errors for deep link attempts (these are expected browser warnings)
-    //             const originalError = console.error;
-    //             console.error = function(...args) {
-    //               const message = args[0]?.toString() || '';
-    //               // Ignore expected browser warnings about deep links
-    //               if (message.includes('scheme does not have a registered handler') ||
-    //                   message.includes('user gesture is required') ||
-    //                   message.includes('Failed to launch')) {
-    //                 return; // Suppress these expected warnings
-    //               }
-    //               originalError.apply(console, args);
-    //             };
+                // Suppress console errors for deep link attempts
+                const originalError = console.error;
+                console.error = function(...args) {
+                  const message = args[0]?.toString() || '';
+                  if (message.includes('scheme does not have a registered handler') ||
+                      message.includes('user gesture is required') ||
+                      message.includes('Failed to launch')) {
+                    return;
+                  }
+                  originalError.apply(console, args);
+                };
 
-    //             // Make openApp function available globally - only works on user click
-    //             window.openApp = function() {
-    //               console.log('Opening app via deep link...');
-    //               statusEl.textContent = 'Opening app...';
+                // Automatically try deep link if on mobile
+                if (isMobile) {
+                  setTimeout(() => {
+                    window.location.href = deepLink;
+                  }, 1500);
+                }
 
-    //               // Use window.location.href (works with user gesture)
-    //               // Wrap in try-catch to handle gracefully
-    //               try {
-    //                 window.location.href = deepLink;
-    //               } catch(e) {
-    //                 // Silently handle - browser will show its own message if needed
-    //                 statusEl.textContent = 'If the app didn\\'t open, make sure it\\'s installed on your device.';
-    //               }
-    //             };
-    //           })();
-    //         </script>
-    //       </div>
-    //     </body>
-    //   </html>
-    // `);
-    return res.status(200).json({
-      success: true,
-      message: "Google Fit connected successfully",
-      userId,
-      saved: true,
-    });
+                // Make openApp function available globally
+                window.openApp = function() {
+                  console.log('Opening app via deep link...');
+                  statusEl.textContent = 'Opening app...';
+                  try {
+                    window.location.href = deepLink;
+                  } catch(e) {
+                    statusEl.textContent = "If the app didn't open, make sure it's installed.";
+                  }
+                };
+              })();
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
   } catch (error) {
     // Log failure to console
     console.error("❌ Google Fit Connection Failed:", error);
@@ -278,7 +287,7 @@ if (!savedConnection || !savedConnection.accessToken) {
       error.response?.data?.error_description ||
       error.message ||
       "Unknown error";
-    const deepLinkUrl = `diabetesapp://google-fit-connected?success=false&error=${encodeURIComponent(
+    const deepLinkUrl = `diabetesapp://auth/callback/google-fit?success=false&error=${encodeURIComponent(
       errorMessage
     )}`;
 
@@ -431,6 +440,24 @@ export const disconnectGoogleFit = async (req, res) => {
 };
 
 /**
+ * Helper to sum calories from meal logs for a specific day
+ */
+const getDailyMealCalories = async (userId, date) => {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const logs = await MealLog.find({
+    user: userId,
+    loggedAt: { $gte: startOfDay, $lte: endOfDay }
+  });
+
+  return logs.reduce((sum, log) => sum + (log.nutritionalInfo?.calories || 0), 0);
+};
+
+/**
  * Sync health data from Google Fit
  * @route POST /api/google-fit/sync
  * @access Private
@@ -451,17 +478,34 @@ export const syncHealthData = async (req, res) => {
 
     // Check if token needs refresh
     if (new Date() >= googleFit.tokenExpiry) {
-      const newTokenData = await refreshAccessToken(
-        googleFit.refreshToken,
-        getGoogleClientId(),
-        getGoogleClientSecret()
-      );
+      try {
+        const newTokenData = await refreshAccessToken(
+          googleFit.refreshToken,
+          getGoogleClientId(),
+          getGoogleClientSecret()
+        );
 
-      googleFit.accessToken = newTokenData.accessToken;
-      googleFit.tokenExpiry = new Date(
-        Date.now() + newTokenData.expiresIn * 1000
-      );
-      await googleFit.save();
+        googleFit.accessToken = newTokenData.accessToken;
+        googleFit.tokenExpiry = new Date(
+          Date.now() + newTokenData.expiresIn * 1000
+        );
+        await googleFit.save();
+      } catch (refreshError) {
+        console.error("Token refresh failed:", refreshError.message);
+        if (refreshError.message.includes('invalid or expired')) {
+          // Token is revoked or expired. Automatically disconnect.
+          googleFit.isActive = false;
+          await googleFit.save();
+          await User.findByIdAndUpdate(userId, { isGoogleFitConnected: false });
+          
+          return res.status(401).json({
+            success: false,
+            errorCode: 'FIT_TOKEN_EXPIRED',
+            message: "Google Fit session expired. Please reconnect.",
+          });
+        }
+        throw refreshError; // Re-throw if it's a generic network error
+      }
     }
 
     // Get today's date range
@@ -495,6 +539,9 @@ export const syncHealthData = async (req, res) => {
         )
       : null;
 
+    // Get meals calories for today
+    const caloriesConsumed = await getDailyMealCalories(userId, new Date());
+
     // Persist a daily snapshot
     await HealthMetric.findOneAndUpdate(
       {
@@ -505,7 +552,8 @@ export const syncHealthData = async (req, res) => {
         user: userId,
         source: "google_fit",
         steps: steps || 0,
-        calories: calories || 0,
+        calories: calories || 0, // This is calories burned from Google Fit
+        caloriesConsumed, // This is calories intake from MealLog
         sleepHours: sleep || 0,
         heartRateAvg,
         bloodGlucose: bloodGlucose || null,
@@ -524,6 +572,7 @@ export const syncHealthData = async (req, res) => {
       data: {
         steps: steps || 0,
         calories: calories || 0,
+        caloriesConsumed,
         sleep: sleep || 0,
         heartRateAvg: heartRateAvg || null,
         bloodGlucose: bloodGlucose || null,
