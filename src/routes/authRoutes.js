@@ -30,25 +30,32 @@ router.post('/refresh', refreshSession);
 // Frontend opens: http://192.168.1.76:5000/api/auth/google
 router.get(
   '/google',
-  passport.authenticate('google', {
-    scope: ['profile', 'email'],
-    session: false
-  })
+  (req, res, next) => {
+    const returnUrl = req.query.returnUrl || 'diabetesapp://auth/callback';
+    passport.authenticate('google', {
+      scope: ['profile', 'email'],
+      session: false,
+      state: returnUrl // Pass dynamic returnUrl through Google state
+    })(req, res, next);
+  }
 );
 
 // Step 2: Google redirects here after user signs in
 router.get(
   '/google/callback',
-  passport.authenticate('google', {
-    session: false,
-    failureRedirect: '/api/auth/google/error'
-  }),
+  (req, res, next) => {
+    passport.authenticate('google', {
+      session: false,
+      failureRedirect: `/api/auth/google/error?returnUrl=${encodeURIComponent(req.query.state || 'diabetesapp://auth/error')}`
+    })(req, res, next);
+  },
   googleCallback
 );
 
 // Error handler for Google OAuth
 router.get('/google/error', (req, res) => {
-  res.redirect(`diabetesapp://auth/error?message=${encodeURIComponent('Google Sign-In failed')}`);
+  const returnUrl = req.query.returnUrl || 'diabetesapp://auth/error';
+  res.redirect(`${returnUrl}?message=${encodeURIComponent('Google Sign-In failed')}`);
 });
 
 // ========================================
