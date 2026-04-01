@@ -219,42 +219,95 @@ export const getCaloriesData = async (accessToken, startTime, endTime) => {
     const startTimeMillis = new Date(startTime).getTime();
     const endTimeMillis = new Date(endTime).getTime();
 
-    const response = await axios.post(
-      `${GOOGLE_FIT_API_BASE}/users/me/dataset:aggregate`,
-      {
-        aggregateBy: [{
-          dataTypeName: 'com.google.calories.expended',
-          dataSourceId: 'derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended'
-        }],
-        bucketByTime: { durationMillis: 86400000 },
-        startTimeMillis,
-        endTimeMillis
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+    const dataSources = [
+      'derived:com.google.calories.expended:com.google.android.gms:merge_calories_expended',
+      'derived:com.google.calories.expended:com.google.android.gms:platform_calories_expended'
+    ];
 
-    let totalCalories = 0;
-    if (response.data.bucket) {
-      response.data.bucket.forEach(bucket => {
-        if (bucket.dataset && bucket.dataset[0] && bucket.dataset[0].point) {
-          bucket.dataset[0].point.forEach(point => {
-            if (point.value && point.value[0]) {
-              totalCalories += point.value[0].fpVal || 0;
+    for (const dataSourceId of dataSources) {
+      try {
+        const response = await axios.post(
+          `${GOOGLE_FIT_API_BASE}/users/me/dataset:aggregate`,
+          {
+            aggregateBy: [{
+              dataTypeName: 'com.google.calories.expended',
+              dataSourceId: dataSourceId
+            }],
+            bucketByTime: { durationMillis: 86400000 },
+            startTimeMillis,
+            endTimeMillis
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        let totalCalories = 0;
+        if (response.data.bucket) {
+          response.data.bucket.forEach(bucket => {
+            if (bucket.dataset && bucket.dataset[0] && bucket.dataset[0].point) {
+              bucket.dataset[0].point.forEach(point => {
+                if (point.value && point.value[0]) {
+                  totalCalories += point.value[0].fpVal || 0;
+                }
+              });
             }
           });
         }
-      });
+
+        if (totalCalories > 0) {
+          return Math.round(totalCalories);
+        }
+      } catch (dsError) {
+        // Try next data source if this one fails
+        continue;
+      }
     }
 
-    return Math.round(totalCalories);
+    // Fallback: try without specifying dataSourceId
+    try {
+      const response = await axios.post(
+        `${GOOGLE_FIT_API_BASE}/users/me/dataset:aggregate`,
+        {
+          aggregateBy: [{
+            dataTypeName: 'com.google.calories.expended'
+          }],
+          bucketByTime: { durationMillis: 86400000 },
+          startTimeMillis,
+          endTimeMillis
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      let totalCalories = 0;
+      if (response.data.bucket) {
+        response.data.bucket.forEach(bucket => {
+          if (bucket.dataset && bucket.dataset[0] && bucket.dataset[0].point) {
+            bucket.dataset[0].point.forEach(point => {
+              if (point.value && point.value[0]) {
+                totalCalories += point.value[0].fpVal || 0;
+              }
+            });
+          }
+        });
+      }
+
+      return Math.round(totalCalories);
+    } catch (error) {
+      console.warn('⚠️ Could not fetch calories data from Google Fit with generic data source.', error.response?.data?.error?.message || error.message);
+      return 0;
+    }
   } catch (error) {
-    console.error('Error fetching calories data:', error.response?.data || error.message);
-    throw new Error('Failed to fetch calories data from Google Fit');
+    console.warn('⚠️ Calories data not available from Google Fit:', error.message);
+    return 0;
   }
 };
 
@@ -301,8 +354,11 @@ export const getSleepData = async (accessToken, startTime, endTime) => {
 
     return Math.round(totalSleepMinutes / 60); // Convert to hours
   } catch (error) {
-    console.error('Error fetching sleep data:', error.response?.data || error.message);
-    throw new Error('Failed to fetch sleep data from Google Fit');
+    if (error.response?.status === 403) {
+      return 0; // Permission denied, silently return 0
+    }
+    console.warn('⚠️ Sleep data not available from Google Fit:', error.response?.data?.error?.message || error.message);
+    return 0;
   }
 };
 
@@ -351,8 +407,11 @@ export const getHeartRateData = async (accessToken, startTime, endTime) => {
 
     return heartRates;
   } catch (error) {
-    console.error('Error fetching heart rate data:', error.response?.data || error.message);
-    throw new Error('Failed to fetch heart rate data from Google Fit');
+    if (error.response?.status === 403) {
+      return []; // Permission denied, silently return empty array
+    }
+    console.warn('⚠️ Heart rate data not available from Google Fit:', error.response?.data?.error?.message || error.message);
+    return [];
   }
 };
 
