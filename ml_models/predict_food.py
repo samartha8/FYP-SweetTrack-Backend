@@ -153,8 +153,8 @@ def init_sam():
             points_per_side=8, 
             pred_iou_thresh=0.86,
             stability_score_thresh=0.90, # Lowered for better texture detection
-            min_mask_region_area=800, # Catch smaller bowls
-            points_per_batch=32 # Moderate batch size
+            min_mask_region_area=800, 
+            points_per_batch=32 # Original moderate batch size
         )
         debug_print("✅ Mobile-SAM initialized in Accuracy Safety Mode.")
     except Exception as e:
@@ -279,16 +279,8 @@ def segment_and_classify(image_path):
             
         h_orig, w_orig = image.shape[:2]
         
-        # Optimization: Downscale even further for speed
-        # 416px is a sweet spot for Mobile-SAM speed/accuracy
-        MAX_SEG_DIM = 416
-        if max(h_orig, w_orig) > MAX_SEG_DIM:
-            scale = MAX_SEG_DIM / max(h_orig, w_orig)
-            image_small = cv2.resize(image, (int(w_orig * scale), int(h_orig * scale)), interpolation=cv2.INTER_AREA)
-            debug_print(f"Downscaled segmentation target to {image_small.shape[1]}x{image_small.shape[0]}")
-        else:
-            image_small = image
-            scale = 1.0
+        image_small = image
+        scale = 1.0
 
         image_rgb_small = cv2.cvtColor(image_small, cv2.COLOR_BGR2RGB)
         h_small, w_small = image_small.shape[:2]

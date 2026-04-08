@@ -19,18 +19,18 @@ const healthSchema = new mongoose.Schema({
   },
   height: {
     type: Number, // in cm
-    min: 80,
-    max: 250
+    min: [80, 'Height must be at least 80cm'],
+    max: [250, 'Height must be less than 250cm']
   },
   weight: {
     type: Number, // in kg
-    min: 25,
-    max: 400
+    min: [25, 'Weight must be at least 25kg'],
+    max: [400, 'Weight must be less than 400kg']
   },
   bmi: {
     type: Number,
-    min: 12,
-    max: 98
+    min: [12, 'BMI must be at least 12'],
+    max: [98, 'BMI must be less than 98']
   },
   // Medical Measurements
   highBP: {

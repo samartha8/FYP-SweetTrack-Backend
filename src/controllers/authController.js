@@ -28,7 +28,10 @@ const sanitizeUser = (user) => ({
   isGoogleFitConnected: user.isGoogleFitConnected,
   accountType: user.accountType,
   googleProfile: user.googleProfile,
-  healthData: user.healthData // Include nested health data
+  healthData: user.healthData, // Include nested health data
+  rewardsPoints: user.rewardsPoints || 0,
+  streak: user.streak || 0,
+  unlockedBadges: user.unlockedBadges || []
 });
 
 const issueTokens = async (user) => {

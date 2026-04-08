@@ -172,109 +172,60 @@ if (!savedConnection || !savedConnection.accessToken) {
     // Connection verified successfully - log to console and send success page
     console.log("✅ Google Fit Connected Successfully - User ID:", userId);
 
-    const deepLinkUrl = `diabetesapp://auth/callback/google-fit?success=true`;
+    const deepLink = `diabetesapp://google-fit/callback?success=true`;
     res.send(`
       <!DOCTYPE html>
       <html>
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Google Fit Connected</title>
+          <title>Syncing SweetTrack</title>
           <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              padding: 20px;
+            body { 
+              margin: 0; padding: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
+              font-family: -apple-system, sans-serif; color: white; text-align: center;
             }
-            .container {
-              text-align: center;
-              max-width: 400px;
+            .card { 
+              background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(15px);
+              padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); width: 85%; max-width: 350px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.2); transition: transform 0.3s;
             }
-            h1 { margin: 0 0 10px 0; font-size: 24px; }
-            p { margin: 10px 0; opacity: 0.9; font-size: 16px; }
-            .button {
-              display: inline-block;
-              margin-top: 20px;
-              padding: 12px 24px;
-              background: white;
-              color: #667eea;
-              text-decoration: none;
-              border: none;
-              border-radius: 8px;
-              font-weight: 600;
-              font-size: 16px;
-              cursor: pointer;
-              font-family: inherit;
+            .spinner {
+              width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%;
+              border-top-color: white; animation: spin 0.8s linear infinite; margin: 0 auto 20px;
             }
-            .button:hover { opacity: 0.9; }
-            .button:active { transform: scale(0.98); }
-            .hidden { display: none; }
-            .note {
-              margin-top: 20px;
-              font-size: 14px;
-              opacity: 0.8;
+            @keyframes spin { to { transform: rotate(360deg); } }
+            h2 { margin: 0 0 10px; font-weight: 600; }
+            p { opacity: 0.8; margin: 0 0 30px; font-size: 14px; }
+            .btn {
+              background: white; color: #764ba2; padding: 14px 28px; border-radius: 12px;
+              text-decoration: none; font-weight: 700; font-size: 15px; display: inline-block;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.1);
             }
           </style>
         </head>
         <body>
-          <div class="container">
-            <h1>✅ Google Fit Connected!</h1>
-            <p id="status">Connection verified successfully</p>
-            <button id="openButton" class="button" onclick="openApp()">Return to App</button>
-            <p class="note" id="note"></p>
+          <div class="card">
+            <div class="spinner"></div>
+            <h2>Syncing Google Fit...</h2>
+            <p id="status">Hang tight, returning to app.</p>
+            <a href="${deepLink}" class="btn" id="manualBtn">Return to App Now</a>
             <script>
-              (function() {
-                // Log success to console
-                console.log('✅ Google Fit Connected Successfully');
+              const deepLink = "${deepLink}";
+              
+              // ⚡ INSTANT REDIRECT V2
+              // Many browsers (Android Chrome) require user gesture, 
+              // but we try window.location.replace first as it's cleaner.
+              setTimeout(() => {
+                window.location.replace(deepLink);
+              }, 500);
 
-                const deepLink = "${deepLinkUrl}";
-                const statusEl = document.getElementById('status');
-                const noteEl = document.getElementById('note');
-
-                // Check if we're on mobile
-                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-                noteEl.textContent = isMobile
-                  ? "Tap the button above to return to the app."
-                  : 'Please open this page on your mobile device.';
-
-                // Suppress console errors for deep link attempts
-                const originalError = console.error;
-                console.error = function(...args) {
-                  const message = args[0]?.toString() || '';
-                  if (message.includes('scheme does not have a registered handler') ||
-                      message.includes('user gesture is required') ||
-                      message.includes('Failed to launch')) {
-                    return;
-                  }
-                  originalError.apply(console, args);
-                };
-
-                // Automatically try deep link if on mobile
-                if (isMobile) {
-                  setTimeout(() => {
-                    window.location.href = deepLink;
-                  }, 1500);
-                }
-
-                // Make openApp function available globally
-                window.openApp = function() {
-                  console.log('Opening app via deep link...');
-                  statusEl.textContent = 'Opening app...';
-                  try {
-                    window.location.href = deepLink;
-                  } catch(e) {
-                    statusEl.textContent = "If the app didn't open, make sure it's installed.";
-                  }
-                };
-              })();
+              // 🛡️ Fail-safe: If window hasn't blurred (app hasn't opened), vibrate button
+              setTimeout(() => {
+                document.getElementById('status').textContent = "If the app didn't open automatically, please tap below:";
+                document.getElementById('manualBtn').style.transform = 'scale(1.05)';
+              }, 2500);
             </script>
           </div>
         </body>
@@ -287,7 +238,7 @@ if (!savedConnection || !savedConnection.accessToken) {
       error.response?.data?.error_description ||
       error.message ||
       "Unknown error";
-    const deepLinkUrl = `diabetesapp://auth/callback/google-fit?success=false&error=${encodeURIComponent(
+    const deepLinkUrl = `diabetesapp://google-fit/callback?success=false&error=${encodeURIComponent(
       errorMessage
     )}`;
 

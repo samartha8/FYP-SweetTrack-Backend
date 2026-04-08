@@ -96,7 +96,9 @@ export const createMealLog = async (req, res) => {
       payload.storagePath = req.file.path;
     }
 
+    if (process.env.NODE_ENV === 'development') console.time('💾 [Backend] MealLog.create');
     const mealLog = await MealLog.create(payload);
+    if (process.env.NODE_ENV === 'development') console.timeEnd('💾 [Backend] MealLog.create');
 
     res.status(201).json({ success: true, mealLog });
   } catch (error) {

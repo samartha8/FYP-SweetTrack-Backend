@@ -148,7 +148,9 @@ export const analyzeMealImage = async (imagePath) => {
 
         for (const p of detections) {
             // --- NON-FOOD DETECTION PER SEGMENT ---
-            const CONFIDENCE_THRESHOLD = 0.20;
+            // --- NON-FOOD DETECTION PER SEGMENT ---
+            // 🛡️ Increased from 0.20 to 0.45 to prevent "hallucinated" food matches on non-food items (bottles, etc)
+            const CONFIDENCE_THRESHOLD = 0.45;
             if (p.confidence < CONFIDENCE_THRESHOLD) {
                 console.warn(`[ML-Rejection] Segment rejected. Confidence ${p.confidence.toFixed(2)} below threshold.`);
                 continue;
@@ -213,7 +215,8 @@ export const analyzeMealImage = async (imagePath) => {
             return {
                 isNotFood: true,
                 confidence: primary ? primary.confidence : 0,
-                detectedAs: primary ? primary.label : 'Unknown'
+                detectedAs: primary ? (primary.label || primary.class) : 'Non-Food Item',
+                message: "AI is unsure if this contains food."
             };
         }
 

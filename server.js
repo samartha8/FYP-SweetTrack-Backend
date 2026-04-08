@@ -57,6 +57,7 @@ import notificationRoutes from './src/routes/notificationRoutes.js';
 import chatbotRoutes from './src/routes/chatbotRoutes.js';
 import diabetesRoutes from './src/routes/diabetesRoutes.js';
 import recordRoutes from './src/routes/recordRoutes.js';
+import rewardsRoutes from './src/routes/rewardsRoutes.js';
 import { evaluateGoalsForAllUsers } from './src/controllers/notificationController.js';
 import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
 
@@ -87,6 +88,9 @@ app.use(
 
       // Allow local network IPs (for physical devices)
       if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return callback(null, true);
+
+      // ✅ Allow Localtunnel domains
+      if (origin.includes('loca.lt')) return callback(null, true);
 
       callback(new Error('Not allowed by CORS'), false);
     },
@@ -135,6 +139,15 @@ mongoose
 // ========================================
 
 // Health check endpoint
+app.get('/api/status', (req, res) => {
+  res.json({
+    success: true,
+    message: '✅ SweetTrack Backend is ONLINE',
+    timestamp: new Date().toISOString(),
+    env: process.env.NODE_ENV || 'development'
+  });
+});
+
 app.get('/', (req, res) => {
   res.json({
     success: true,
@@ -172,6 +185,7 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/diabetes', diabetesRoutes);
 app.use('/api/records', recordRoutes);
+app.use('/api/rewards', rewardsRoutes);
 
 // ========================================
 // ERROR HANDLING
@@ -205,8 +219,8 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('========================================');
   console.log(`📡 Port: ${PORT}`);
   console.log(`🔗 Local: http://localhost:${PORT}`);
-  console.log(`🔗 Network: http://192.168.1.76:${PORT}`);
-  console.log(`🔐 Google OAuth: http://192.168.1.76:${PORT}/api/auth/google`);
+  console.log(`🔗 Network: http://192.168.1.136:${PORT}`);
+  console.log(`🔐 Google OAuth: http://192.168.1.136:${PORT}/api/auth/google`);
   console.log('========================================\n');
 });
 

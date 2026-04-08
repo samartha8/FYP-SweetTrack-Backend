@@ -62,6 +62,27 @@ const userSchema = new mongoose.Schema(
       ref: 'Health'
     },
 
+    // Rewards tracking
+    rewardsPoints: {
+      type: Number,
+      default: 0
+    },
+
+    streak: {
+      type: Number,
+      default: 0
+    },
+
+    unlockedBadges: {
+      type: [String],
+      default: []
+    },
+
+    lastActivityDate: {
+      type: Date,
+      default: null
+    },
+
     settings: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Settings'
