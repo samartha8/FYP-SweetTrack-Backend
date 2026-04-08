@@ -46,3 +46,12 @@ ml_models/MobileSAM/
 ml_models/*.pt
 ml_models/*.keras
 ml_models/*.pkl
+ml_models/__pycache__/
+
+# Utility and temp scripts
+check_food_classes.js
+check_user.js
+test_routes.js
+
+# Temp uploads
+uploads/
