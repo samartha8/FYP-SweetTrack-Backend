@@ -34,8 +34,10 @@ const sanitizeUser = (user) => ({
   unlockedBadges: user.unlockedBadges || []
 });
 
-const issueTokens = async (user) => {
-  user.tokenVersion = (user.tokenVersion || 0) + 1;
+const issueTokens = async (user, { rotateVersion = true } = {}) => {
+  if (rotateVersion) {
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+  }
   user.sessionIssuedAt = new Date();
   await user.save();
 
@@ -106,7 +108,7 @@ export const registerUser = async (req, res) => {
 
     const defaultSettings = await createDefaultSettings(user._id);
     user.settings = defaultSettings._id;
-    await user.save();
+    // user.save() will be called inside issueTokens below
 
     const { accessToken, refreshToken } = await issueTokens(user);
 
@@ -173,7 +175,7 @@ export const loginUser = async (req, res) => {
     }
 
     user.lastLogin = new Date();
-    await user.save();
+    // user.save() will be called inside issueTokens below
 
     const { accessToken, refreshToken } = await issueTokens(user);
 
@@ -227,8 +229,10 @@ export const getCurrentUser = async (req, res) => {
 export const refreshSession = async (req, res) => {
   try {
     const { refreshToken } = req.body;
+    console.log('🔄 [Auth] Refresh attempt received');
 
     if (!refreshToken) {
+      console.warn('⚠️ [Auth] Refresh failed: No token provided');
       return res.status(400).json({
         success: false,
         message: 'Refresh token required'
@@ -239,6 +243,7 @@ export const refreshSession = async (req, res) => {
     try {
       decoded = jwt.verify(refreshToken, getJWTSecret());
     } catch (error) {
+      console.error(`❌ [Auth] JWT Verification failed: ${error.message}`);
       if (error.name === 'JsonWebTokenError') {
         return res.status(401).json({
           success: false,
@@ -256,10 +261,20 @@ export const refreshSession = async (req, res) => {
     }
 
     const user = await User.findById(decoded.id)
-      .populate('healthData') // Populate health data
+      .populate('healthData')
       .populate('settings');
 
-    if (!user || decoded.tokenVersion !== (user.tokenVersion || 0)) {
+    if (!user) {
+      console.warn(`⚠️ [Auth] Refresh failed: User ${decoded.id} not found`);
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired session',
+        errorCode: 'USER_NOT_FOUND'
+      });
+    }
+
+    if (decoded.tokenVersion !== (user.tokenVersion || 0)) {
+      console.warn(`⚠️ [Auth] Refresh failed: Version mismatch for ${user.email}. Token: ${decoded.tokenVersion}, DB: ${user.tokenVersion || 0}`);
       return res.status(401).json({
         success: false,
         message: 'Invalid or expired session',
@@ -267,7 +282,9 @@ export const refreshSession = async (req, res) => {
       });
     }
 
-    const { accessToken, refreshToken: newRefreshToken } = await issueTokens(user);
+    const { accessToken, refreshToken: newRefreshToken } = await issueTokens(user, { rotateVersion: false });
+
+    console.log(`✅ [Auth] Session refreshed for ${user.email}`);
 
     res.status(200).json({
       success: true,
@@ -276,7 +293,7 @@ export const refreshSession = async (req, res) => {
       refreshToken: newRefreshToken
     });
   } catch (error) {
-    console.error('❌ Refresh session error:', error);
+    console.error('❌ [Auth] Refresh session error:', error);
     res.status(401).json({
       success: false,
       message: 'Unable to refresh session'
