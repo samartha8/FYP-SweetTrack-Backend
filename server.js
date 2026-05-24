@@ -58,6 +58,7 @@ import chatbotRoutes from './src/routes/chatbotRoutes.js';
 import diabetesRoutes from './src/routes/diabetesRoutes.js';
 import recordRoutes from './src/routes/recordRoutes.js';
 import rewardsRoutes from './src/routes/rewardsRoutes.js';
+import wellnessRoutes from './src/routes/wellnessRoutes.js';
 import { evaluateGoalsForAllUsers } from './src/controllers/notificationController.js';
 import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
 
@@ -73,44 +74,53 @@ const app = express();
 // MIDDLEWARE
 // ========================================
 
-// CORS configuration
+// CORS configuration - More permissive for development
+// CORS configuration - Explicit origins for credentials support
+const allowedOrigins = [
+  'http://localhost:8081',
+  'http://localhost:19000',
+  'http://localhost:19006',
+  'https://domain-recant-urgency.ngrok-free.dev'
+];
+
 app.use(
   cors({
-    origin: function (origin, callback) {
-      // Allow requests with no origin (mobile apps, Postman)
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps or curl)
       if (!origin) return callback(null, true);
-
-      // Allow localhost on any port
-      if (/^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
-
-      // Allow Android emulator
-      if (/^http:\/\/10\.0\.2\.2:\d+$/.test(origin)) return callback(null, true);
-
-      // Allow local network IPs (for physical devices)
-      if (/^http:\/\/192\.168\.\d+\.\d+:\d+$/.test(origin)) return callback(null, true);
-
-      // ✅ Allow Localtunnel domains
-      if (origin.includes('loca.lt')) return callback(null, true);
-
-      callback(new Error('Not allowed by CORS'), false);
+      if (allowedOrigins.indexOf(origin) !== -1 || origin.includes('ngrok-free.dev')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'ngrok-skip-browser-warning'],
   })
 );
 
 // Body parsing
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Request Logger
+// Request Logger & Ngrok Skip Warning
 app.use((req, res, next) => {
-  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
-  if (req.method !== 'GET') {
-    // Log body keys (avoiding logging whole binary files)
-    const bodyKeys = req.body ? Object.keys(req.body) : [];
-    console.log('   Body Keys:', bodyKeys);
-    if (req.file) console.log('   Uploaded File:', req.file.filename);
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || (origin && origin.includes('ngrok-free.dev'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
   }
+  
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, ngrok-skip-browser-warning');
+    return res.sendStatus(200);
+  }
+  
+  console.log(`[${new Date().toLocaleTimeString()}] ${req.method} ${req.path}`);
   next();
 });
 
@@ -186,6 +196,7 @@ app.use('/api/chatbot', chatbotRoutes);
 app.use('/api/diabetes', diabetesRoutes);
 app.use('/api/records', recordRoutes);
 app.use('/api/rewards', rewardsRoutes);
+app.use('/api/wellness', wellnessRoutes);
 
 // ========================================
 // ERROR HANDLING
@@ -228,13 +239,15 @@ app.listen(PORT, '0.0.0.0', () => {
 // BACKGROUND JOBS
 // ========================================
 
-// Goal evaluation every 10 minutes
-cron.schedule('*/10 * * * *', async () => {
+// Goal reminders at practical daily checkpoints: morning, afternoon, and evening.
+cron.schedule('0 9,14,20 * * *', async () => {
   try {
     await evaluateGoalsForAllUsers();
   } catch (err) {
     console.error('❌ Goal evaluation job failed:', err);
   }
+}, {
+  timezone: process.env.REMINDER_TIMEZONE || 'Asia/Kathmandu'
 });
 
 // Google Fit sync every 30 minutes
