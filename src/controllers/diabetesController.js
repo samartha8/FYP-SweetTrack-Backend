@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import DiabetesPrediction from '../models/DiabetesPrediction.js';
+import Health from '../models/Health.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +34,9 @@ export const getLatestPrediction = async (req, res) => {
             riskLevel: prediction.riskLevel,
             insights: prediction.insights,
             inputData: prediction.inputData,
-            timestamp: prediction.createdAt
+            timestamp: prediction.createdAt,
+            mode: prediction.mode || 'LIFESTYLE',
+            confidenceScore: prediction.confidenceScore || 70
         });
 
     } catch (error) {
@@ -70,7 +73,7 @@ export const predictDiabetes = async (req, res) => {
         const {
             age, sex, height, weight, bmi, highBP, highChol, genHlth, 
             smoker, physActivity, heartDiseaseOrAttack, hba1cEstimated, 
-            bloodGlucoseEstimated, pregnancies
+            bloodGlucoseEstimated, pregnancies, hba1cSource, glucoseSource
         } = req.body;
 
         const inputData = {
@@ -81,26 +84,29 @@ export const predictDiabetes = async (req, res) => {
 
         console.log("📥 [DiabetesController] CLEAN Input Data (Filtered):", JSON.stringify(inputData, null, 2));
 
-        // 1. Dynamic Estimation & Pre-processing
-        const bmiVal = parseFloat(bmi || 25);
-        const ageVal = parseFloat(age || 5);
-        const genHlthVal = parseFloat(genHlth || 3);
+        // 1. Pre-processing & Sanitization
+        const safeParse = (val, fallback = 0) => {
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? fallback : parsed;
+        };
+
+        const bmiVal = safeParse(bmi, 25);
+        const ageVal = safeParse(age, 5);
         const parseFloatSafe = (val) => (val == '1' || val === 1) ? 1 : 0;
-        const highCholVal = parseFloatSafe(highChol);
         const highBPVal = parseFloatSafe(highBP);
 
-        // Calculate live estimates ONLY if not provided by the user
-        // Coefficients adjusted to be more conservative
-        const calculatedHba1c = 4.5 + (bmiVal - 25) * 0.02 + (ageVal - 7) * 0.1 + (genHlthVal - 1) * 0.3 + highCholVal * 0.5 + highBPVal * 0.4;
-        const calculatedGlucose = 85 + (bmiVal - 25) * 0.8 + (ageVal - 7) * 2.0 + (genHlthVal - 1) * 5 + highCholVal * 10 + highBPVal * 8;
-
-        const hba1c = parseFloat(hba1cEstimated || calculatedHba1c);
-        const glucose = parseFloat(bloodGlucoseEstimated || calculatedGlucose);
+        // Explicitly check for clinical data (Medical markers only)
+        const hba1c = hba1cEstimated ? safeParse(hba1cEstimated, null) : null;
+        const glucose = bloodGlucoseEstimated ? safeParse(bloodGlucoseEstimated, null) : null;
+        const bpValForConfidence = highBP ? parseInt(highBP) : 0;
+        
+        const hasClinicalData = (hba1c !== null || glucose !== null || bmiVal > 0 || bpValForConfidence > 0);
 
         // Patch the input data for Python
-        inputData.hba1cEstimated = hba1c;
-        inputData.bloodGlucoseEstimated = glucose;
-        inputData.glucose = glucose;
+        inputData.hba1cEstimated = hba1c || 0;
+        inputData.bloodGlucoseEstimated = glucose || 0;
+        inputData.glucose = glucose || 0;
+        inputData.hasClinicalData = hasClinicalData ? 1 : 0;
 
         // Path to python script
         const pythonScriptPath = path.join(__dirname, '../../ml_models/predict.py');
@@ -144,39 +150,52 @@ export const predictDiabetes = async (req, res) => {
                     throw new Error(result.error || 'Unknown error from prediction script');
                 }
 
-                // --- POST-PROCESSING ---
+                // --- POST-PROCESSING & CLINICAL CALIBRATION ---
+                // Calculation is now purely based on physiological values.
+                // Data Source only affects the Confidence Bar.
 
-                const mlProbability = result.probability || 0;
+                let mlProbability = result.probability || 0;
                 const mlPrediction = result.prediction || 0;
                 let riskScore = 0;
                 let riskLevel = 'Low Risk';
 
                 // 1. Initial ML-based Level Determination
-                if (mlPrediction === 1 || mlProbability >= 0.7) {
+                if (mlProbability >= 0.7) {
                     riskLevel = 'High Risk';
                 } else if (mlProbability > 0.35) {
                     riskLevel = 'Medium Risk';
                 }
 
-                // 2. Clinical Overrides
+                // 2. Clinical Overrides (Ensure high RECALL for actually sick users)
                 let clinicalOverride = false;
 
-                // Rule 1: Diabetes Range (High Risk)
-                if (hba1c >= 6.5 || glucose >= 200) {
-                    riskLevel = 'High Risk';
-                    clinicalOverride = true;
-                }
-                // Rule 2: Prediabetes Range (Medium Risk)
-                else if (hba1c >= 5.7 || glucose >= 140) {
-                    if (riskLevel === 'Low Risk') {
-                        riskLevel = 'Medium Risk';
+                if (hasClinicalData) {
+                    // Rule 1: Diabetes Range (Strict High Risk)
+                    if (hba1c >= 6.5 || glucose >= 200) {
+                        riskLevel = 'High Risk';
+                        clinicalOverride = true;
                     }
-                    clinicalOverride = true;
+                    // Rule 2: Prediabetes Range (Medium Risk)
+                    else if (hba1c >= 5.7 || glucose >= 140) {
+                        if (riskLevel === 'Low Risk') {
+                            riskLevel = 'Medium Risk';
+                        }
+                        clinicalOverride = true;
+                    }
                 }
+
+                console.log(`🧪 [DiabetesController] Clinical Analysis Trace:`, {
+                    hba1c,
+                    glucose,
+                    hasClinicalData,
+                    initialRiskLevel: result.riskLevel,
+                    mlProbability
+                });
 
                 // 3. Proportional Scaling Logic
                 const scaleScore = (prob, level, override) => {
-                    if (prob > 0.9) return prob * 100;
+                    console.log(`⚖️ [DiabetesController] Scaling Score: prob=${prob}, level=${level}, override=${override}`);
+                    if (prob > 0.95) return prob * 100;
                     if (!override) return prob * 100;
                     if (level === 'High Risk') {
                         if (prob > 0.67) return prob * 100;
@@ -189,27 +208,53 @@ export const predictDiabetes = async (req, res) => {
                 };
 
                 riskScore = Math.round(scaleScore(mlProbability, riskLevel, clinicalOverride));
+                console.log(`🎯 [DiabetesController] FINAL CALCULATED SCORE: ${riskScore}% (Override: ${clinicalOverride})`);
 
-                // 4. Generate Insights
+                // 4. Calculate ACCUMULATIVE Clinical Confidence Score (Evidence-Based)
+                // Fetch the persistent Health record to get the REAL sources (Data Integrity)
+                const persistentHealth = await Health.findOne({ user: req.user._id });
+                
+                // Rule: Start at 0%. ONLY 'report' sources provide percentage points.
+                let finalConfidence = 0;
+                
+                // Use sources from the DATABASE record to ensure manual edits reset confidence
+                const h1Source = persistentHealth?.hba1cSource || hba1cSource;
+                const gSource = persistentHealth?.glucoseSource || glucoseSource;
+                const bSource = persistentHealth?.bpSource || req.body.bpSource;
+                const bmSource = persistentHealth?.bmiSource || req.body.bmiSource;
+                const dSource = persistentHealth?.demographicsSource || req.body.demographicsSource;
+
+                // 1. TOP PRIORITY: HbA1c (Long-term metabolic proof)
+                if (h1Source === 'report') finalConfidence += 30;
+                
+                // 2. HIGH PRIORITY: Blood Glucose (Immediate metabolic proof)
+                if (gSource === 'report') finalConfidence += 25;
+                
+                // 3. MEDIUM PRIORITY: Blood Pressure & BMI (Physiological indicators)
+                if (bSource === 'report') finalConfidence += 15;
+                if (bmSource === 'report') finalConfidence += 15;
+                
+                // 4. BASELINE: Demographics (Age, Sex, Height, Weight verified via report)
+                if (dSource === 'report') finalConfidence += 15;
+                
+                // Manual entries contribute 0% - the user must scan to earn confidence.
+                // This ensures the 100% bar represents a "Complete & Verified Clinical Profile".
+                finalConfidence = Math.min(finalConfidence, 100);
+
+                // 5. Generate Insights
                 const insights = [];
-                if (clinicalOverride) {
-                    insights.push('Risk level elevated based on clinical guidelines (HbA1c/Glucose).');
-                } else if (riskLevel === 'High Risk') {
-                    insights.push('Your calculated risk is High based on ML factors. Please consult a healthcare provider.');
+                
+                // Explain Clinical Confidence Source
+                if (finalConfidence === 0) {
+                    insights.push('💡 Your current risk is a "Lifestyle Estimate" (0% Clinical Confidence). Upload a lab report for a verified Clinical Audit.');
+                } else if (finalConfidence < 100) {
+                    insights.push(`📊 Your analysis is ${finalConfidence}% verified by scanned reports. Add more lab markers for a complete clinical audit.`);
+                } else {
+                    insights.push('✅ Clinical Audit Complete: Your analysis is 100% verified by official medical evidence.');
                 }
-
-                if (glucose > 140) insights.push(`Glucose level (${glucose.toFixed(1)}) appears elevated.`);
-                if (hba1c > 5.7) insights.push(`HbA1c level (${hba1c.toFixed(1)}%) is above normal.`);
-                if (bmiVal > 30) {
-                    insights.push('BMI indicates obesity. Weight management reduces risk.');
-                } else if (bmiVal > 25) {
-                    insights.push('BMI indicates overweight.');
-                }
-                if (highBPVal === 1) insights.push('High blood pressure is a contributing risk factor.');
 
                 const finalInsights = insights.length > 0 ? insights : ['Your metrics indicate a healthy profile.'];
 
-                // 5. Save to History
                 if (req.user) {
                     try {
                         const predictionRecord = new DiabetesPrediction({
@@ -219,7 +264,10 @@ export const predictDiabetes = async (req, res) => {
                             probability: result.probability,
                             riskScore: riskScore,
                             riskLevel: riskLevel,
-                            insights: finalInsights
+                            insights: finalInsights,
+                            mainReasons: result.main_reasons || [],
+                            mode: hasClinicalData ? 'CLINICAL' : (result.mode || 'LIFESTYLE'),
+                            confidenceScore: finalConfidence
                         });
                         await predictionRecord.save();
                         console.log('✅ Prediction saved to history:', predictionRecord._id);
@@ -235,28 +283,35 @@ export const predictDiabetes = async (req, res) => {
                     riskScore: riskScore,
                     riskLevel: riskLevel,
                     insights: finalInsights,
+                    mainReasons: result.main_reasons || [],
                     inputData: inputData,
+                    mode: hasClinicalData ? 'CLINICAL' : (result.mode || 'LIFESTYLE'),
+                    confidenceScore: finalConfidence,
                     message: result.prediction === 1 ?
-                        'Prediction indicates potential risk.' :
-                        'Prediction indicates low risk.'
+                        'STATUS: POSITIVE - Potential Metabolic Risk Detected.' :
+                        'STATUS: NEGATIVE - Low Metabolic Risk Detected.'
                 });
 
             } catch (err) {
                 console.error('Error parsing Python output:', err);
-                res.status(500).json({
-                    success: false,
-                    message: 'Failed to process prediction result',
-                    error: err.message
-                });
+                if (!res.headersSent) {
+                    res.status(500).json({
+                        success: false,
+                        message: 'Failed to process prediction result',
+                        error: err.message
+                    });
+                }
             }
         });
 
     } catch (error) {
         console.error('Diabetes prediction error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Server error during prediction',
-            error: error.message
-        });
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Server error during prediction',
+                error: error.message
+            });
+        }
     }
 };
