@@ -1,9 +1,13 @@
 import fs from 'fs';
+import mongoose from 'mongoose';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
 import MealLog from '../models/MealLog.js';
-import { analyzeMealImage } from '../services/aiService.js';
+import DiabetesPrediction from '../models/DiabetesPrediction.js';
+import { analyzeMealImage, calculateDiabeticSuitability } from '../services/aiService.js';
+import { analyzeTextLocally } from '../services/textNutritionService.js';
+import { generateDailyAudit } from '../services/metabolicAuditService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,7 +48,20 @@ export const analyzeMeal = async (req, res) => {
 
     const imagePath = req.file.path;
     const imageUrl = buildImageUrl(req, req.file.filename);
-    const result = await analyzeMealImage(imagePath);
+
+    // 🔬 Fetch User's Latest Diabetes Risk Context
+    let userRisk = null;
+    if (req.user) {
+      const latestPrediction = await DiabetesPrediction.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+      if (latestPrediction) {
+        userRisk = {
+          riskLevel: latestPrediction.riskLevel,
+          riskScore: latestPrediction.riskScore
+        };
+      }
+    }
+
+    const result = await analyzeMealImage(imagePath, userRisk);
 
     res.json({
       success: true,
@@ -59,6 +76,97 @@ export const analyzeMeal = async (req, res) => {
       success: false,
       message: error.message || 'Failed to analyze meal'
     });
+  }
+};
+
+// 🔬 Analyze text-based meal description (NLP)
+export const analyzeTextLog = async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) {
+      return res.status(400).json({ success: false, message: 'Text description is required' });
+    }
+
+    const result = analyzeTextLocally(text);
+
+    if (!result || result.error) {
+      let msg = 'Could not identify any familiar foods in your description.';
+      let suggestions = [];
+      if (result && result.suggestions && result.suggestions.length > 0) {
+          msg += ` Did you mean: ${result.suggestions.join(', ')}?`;
+          suggestions = result.suggestions;
+      } else {
+          msg += ' Try being more specific (e.g., "boiled egg", "apple ligol").';
+      }
+      return res.status(200).json({ 
+          success: false, 
+          needsClarification: true, 
+          suggestions: suggestions,
+          message: msg 
+      });
+    }
+
+    // Fetch User's Latest Diabetes Risk for suitability logic
+    let userRisk = null;
+    if (req.user) {
+      const latestPrediction = await DiabetesPrediction.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+      if (latestPrediction) {
+        userRisk = {
+          riskLevel: latestPrediction.riskLevel,
+          riskScore: latestPrediction.riskScore
+        };
+      }
+    }
+
+    // Add Diabetic Suitability to the text result
+    const suitability = calculateDiabeticSuitability(result.nutritionalInfo, userRisk, result.foodItems);
+    
+    res.json({
+      success: true,
+      ...result,
+      suitability
+    });
+
+  } catch (error) {
+    console.error('Analyze text error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process text description' });
+  }
+};
+
+// 📊 Generate Daily Metabolic Recap (End-of-day report)
+export const getDailyRecap = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get all meals for today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const meals = await MealLog.find({
+      user: userId,
+      loggedAt: { $gte: today }
+    });
+
+    // Fetch User Risk
+    let userRisk = null;
+    const latestPrediction = await DiabetesPrediction.findOne({ user: userId }).sort({ createdAt: -1 });
+    if (latestPrediction) {
+      userRisk = {
+        riskLevel: latestPrediction.riskLevel,
+        riskScore: latestPrediction.riskScore
+      };
+    }
+
+    const audit = generateDailyAudit(meals, userRisk);
+
+    res.json({
+      success: true,
+      ...audit
+    });
+
+  } catch (error) {
+    console.error('Daily recap error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate daily report' });
   }
 };
 
@@ -124,6 +232,11 @@ export const getMealLog = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
+    
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid meal log ID' });
+    }
 
     const log = await MealLog.findOne({ _id: id, user: userId });
     if (!log) {
@@ -142,6 +255,11 @@ export const deleteMealLog = async (req, res) => {
   try {
     const userId = req.user.id;
     const { id } = req.params;
+
+    // Validate ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid meal log ID' });
+    }
 
     const log = await MealLog.findOneAndDelete({ _id: id, user: userId });
     if (!log) {
@@ -163,9 +281,10 @@ export const deleteMealLog = async (req, res) => {
 // Get available food classes for manual correction
 export const getFoodClasses = async (req, res) => {
   try {
-    const CLASSES_PATH = path.join(process.cwd(), 'ml_models/class_names.json');
-    const rawClasses = fs.readFileSync(CLASSES_PATH, 'utf8');
-    const classes = JSON.parse(rawClasses);
+    const NUTRITION_PATH = path.join(process.cwd(), 'ml_models/nutrition_lookup.json');
+    const rawData = fs.readFileSync(NUTRITION_PATH, 'utf8');
+    const nutritionDb = JSON.parse(rawData);
+    const classes = Object.keys(nutritionDb);
 
     // Sort and format for the frontend search
     const formatted = classes.map(c => ({
@@ -178,7 +297,9 @@ export const getFoodClasses = async (req, res) => {
     console.error('Get food classes error:', error);
     res.status(500).json({ success: false, message: 'Error fetching food classes' });
   }
-};// Get nutrition for a specific class (manual correction)
+};
+
+// Get nutrition for a specific class (manual correction)
 export const getNutritionForClass = async (req, res) => {
   try {
     const { name } = req.query;
@@ -195,18 +316,36 @@ export const getNutritionForClass = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Nutrition data not found' });
     }
 
+    // 🔬 Fetch User's Latest Diabetes Risk Context for manual addition
+    let userRisk = null;
+    if (req.user) {
+      const DiabetesPrediction = (await import('../models/DiabetesPrediction.js')).default;
+      const latestPrediction = await DiabetesPrediction.findOne({ user: req.user._id }).sort({ createdAt: -1 });
+      if (latestPrediction) {
+        userRisk = {
+          riskLevel: latestPrediction.riskLevel,
+          riskScore: latestPrediction.riskScore
+        };
+      }
+    }
+
+    const compiledNutrition = {
+      calories: nutrition.calories || 0,
+      carbs: nutrition.carbs_g || 0,
+      protein: nutrition.protein_g || 0,
+      fat: nutrition.fat_g || 0,
+      fiber: nutrition.fiber_g || 0,
+      sugar: nutrition.sugar_g || 0,
+      sodium: nutrition.sodium_mg || 0
+    };
+
+    const suitability = calculateDiabeticSuitability(compiledNutrition, userRisk, [{ name: name }]);
+
     res.status(200).json({
       success: true,
       name: name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      nutrition: {
-        calories: nutrition.calories || 0,
-        carbs_g: nutrition.carbohydrates_g || 0,
-        protein_g: nutrition.protein_g || 0,
-        fat_g: nutrition.fat_g || 0,
-        fiber_g: nutrition.fiber_g || 0,
-        sugar_g: nutrition.sugar_g || 0,
-        sodium_mg: nutrition.sodium_mg || 0
-      }
+      nutrition: compiledNutrition,
+      suitability: suitability
     });
   } catch (error) {
     console.error('Get nutrition error:', error);
