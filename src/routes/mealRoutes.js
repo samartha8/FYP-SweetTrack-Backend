@@ -1,5 +1,5 @@
 import express from 'express';
-import { createMealLog, deleteMealLog, getMealLog, listMealLogs, mealImageUpload, analyzeMeal, getFoodClasses, getNutritionForClass } from '../controllers/mealController.js';
+import { createMealLog, deleteMealLog, getMealLog, listMealLogs, mealImageUpload, analyzeMeal, analyzeTextLog, getDailyRecap, getFoodClasses, getNutritionForClass } from '../controllers/mealController.js';
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -19,6 +19,8 @@ router
   }, createMealLog);
 
 router.post('/analyze', mealImageUpload.single('image'), analyzeMeal);
+router.post('/analyze-text', analyzeTextLog);
+router.get('/daily-recap', getDailyRecap);
 
 router.get('/food-classes', getFoodClasses);
 router.get('/nutrition-lookup', getNutritionForClass);
