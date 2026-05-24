@@ -58,7 +58,19 @@ const diabetesPredictionSchema = new mongoose.Schema({
     },
     insights: [{
         type: String // actionable advices
-    }]
+    }],
+    mainReasons: [{
+        type: String // AI factors like 'High BMI'
+    }],
+    mode: {
+        type: String,
+        enum: ['LIFESTYLE', 'CLINICAL'],
+        default: 'LIFESTYLE'
+    },
+    confidenceScore: {
+        type: Number,
+        default: 70
+    }
 }, { timestamps: true });
 
 export default mongoose.model('DiabetesPrediction', diabetesPredictionSchema);
