@@ -1,0 +1,13 @@
+[
+  "BMI",
+  "Age",
+  "HighBP",
+  "HighChol",
+  "Smoker",
+  "PhysActivity",
+  "HeartDiseaseorAttack",
+  "GenHlth",
+  "Sex",
+  "HbA1c_estimated",
+  "BloodGlucose_estimated"
+]
