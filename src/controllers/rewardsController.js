@@ -25,8 +25,13 @@ export const syncRewardsAndStreak = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const { date: dateStr } = req.body;
+    
+    // Use client local date if provided, otherwise fallback to server UTC today
+    const today = dateStr 
+      ? new Date(`${dateStr}T00:00:00.000Z`) 
+      : (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+
 
     let streakChanged = false;
     let newBadges = [];
@@ -34,10 +39,16 @@ export const syncRewardsAndStreak = async (req, res) => {
     // Calculate streak
     if (user.lastActivityDate) {
       const lastActivity = new Date(user.lastActivityDate);
-      lastActivity.setHours(0, 0, 0, 0);
+      
+      // Strip hours perfectly by comparing YYYY-MM-DD strings directly instead of math
+      const todayStr = today.toISOString().split('T')[0];
+      const lastActivityStr = lastActivity.toISOString().split('T')[0];
+      
+      const todayDateOnly = new Date(`${todayStr}T00:00:00Z`);
+      const lastActivityDateOnly = new Date(`${lastActivityStr}T00:00:00Z`);
 
-      const diffTime = Math.abs(today - lastActivity);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffTime = Math.abs(todayDateOnly - lastActivityDateOnly);
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
       if (diffDays === 1) {
         // Logged in consecutive day
@@ -47,17 +58,21 @@ export const syncRewardsAndStreak = async (req, res) => {
         // Streak broken
         user.streak = 1;
         streakChanged = true;
+      } else if (diffDays === 0 && (user.streak === 0 || !user.streak)) {
+        // Fix for Day 1 zero-streak bug
+        user.streak = 1;
+        streakChanged = true;
       }
-      // If diffDays === 0, they already logged in today, do nothing.
     } else {
       // First time activity
       user.streak = 1;
       streakChanged = true;
     }
 
-    user.lastActivityDate = new Date();
+    user.lastActivityDate = dateStr ? new Date(`${dateStr}T12:00:00.000Z`) : new Date();
 
     // Evaluate Badges
+
     Object.keys(BADGE_CRITERIA).forEach(badgeId => {
       if (!user.unlockedBadges.includes(badgeId)) {
         const criteria = BADGE_CRITERIA[badgeId];
@@ -76,9 +91,10 @@ export const syncRewardsAndStreak = async (req, res) => {
     res.status(200).json({
       success: true,
       rewardsPoints: user.rewardsPoints,
-      streak: user.streak,
       unlockedBadges: user.unlockedBadges,
+      redeemedRewards: user.redeemedRewards,
       newBadges: newBadges,
+      streak: user.streak,
       streakUpdated: streakChanged
     });
 
@@ -132,3 +148,46 @@ export const awardPoints = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+
+export const redeemReward = async (req, res) => {
+  try {
+    const { rewardId, cost } = req.body;
+    
+    if (!rewardId || typeof cost !== 'number') {
+      return res.status(400).json({ success: false, message: 'Invalid reward details' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    // Check if already redeemed
+    if (user.redeemedRewards.includes(rewardId)) {
+      return res.status(400).json({ success: false, message: 'Reward already claimed' });
+    }
+
+    // Check points balance
+    if (user.rewardsPoints < cost) {
+      return res.status(400).json({ success: false, message: 'Insufficient points' });
+    }
+
+    // Deduct and claim
+    user.rewardsPoints -= cost;
+    user.redeemedRewards.push(rewardId);
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Successfully redeemed reward`,
+      rewardsPoints: user.rewardsPoints,
+      redeemedRewards: user.redeemedRewards
+    });
+
+  } catch (error) {
+    console.error('❌ Redeem reward error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
