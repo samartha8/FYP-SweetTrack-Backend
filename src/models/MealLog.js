@@ -21,6 +21,8 @@ const mealLogSchema = new mongoose.Schema({
   foodItems: [{
     name: { type: String, required: true },
     confidence: { type: Number, default: 0 },
+    portionSize: { type: String, enum: ['Small', 'Standard', 'Big'], default: 'Standard' },
+    scalar: { type: Number, default: 1.0 }
   }],
   nutritionalInfo: {
     calories: { type: Number, default: 0 },
