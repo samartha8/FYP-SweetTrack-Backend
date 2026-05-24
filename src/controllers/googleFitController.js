@@ -179,55 +179,101 @@ if (!savedConnection || !savedConnection.accessToken) {
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Syncing SweetTrack</title>
+          <title>SweetTrack | Connected Successfully</title>
           <style>
+            :root {
+              --primary: #10B981;
+              --primary-dark: #059669;
+              --bg: #F8FAFC;
+              --text: #1E293B;
+              --text-light: #64748B;
+            }
             body { 
               margin: 0; padding: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              font-family: -apple-system, sans-serif; color: white; text-align: center;
+              background: radial-gradient(circle at top left, #F0FDF4 0%, #ECFDF5 50%, #F8FAFC 100%);
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+              color: var(--text); overflow: hidden;
+            }
+            .background-blur {
+              position: absolute; width: 300px; height: 300px; border-radius: 50%;
+              background: var(--primary); filter: blur(120px); opacity: 0.1; z-index: -1;
+              top: 10%; left: 10%;
             }
             .card { 
-              background: rgba(255, 255, 255, 0.15); backdrop-filter: blur(15px);
-              padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.2); width: 85%; max-width: 350px;
-              box-shadow: 0 10px 40px rgba(0,0,0,0.2); transition: transform 0.3s;
+              background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+              padding: 48px 32px; border-radius: 40px; border: 1px solid rgba(255,255,255,0.5); 
+              width: 90%; max-width: 420px; text-align: center;
+              box-shadow: 0 20px 50px rgba(0,0,0,0.08);
+              animation: slideUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
             }
-            .spinner {
-              width: 50px; height: 50px; border: 4px solid rgba(255,255,255,0.3); border-radius: 50%;
-              border-top-color: white; animation: spin 0.8s linear infinite; margin: 0 auto 20px;
+            @keyframes slideUp {
+              from { opacity: 0; transform: translateY(30px); }
+              to { opacity: 1; transform: translateY(0); }
             }
-            @keyframes spin { to { transform: rotate(360deg); } }
-            h2 { margin: 0 0 10px; font-weight: 600; }
-            p { opacity: 0.8; margin: 0 0 30px; font-size: 14px; }
-            .btn {
-              background: white; color: #764ba2; padding: 14px 28px; border-radius: 12px;
-              text-decoration: none; font-weight: 700; font-size: 15px; display: inline-block;
-              box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            .logo-container {
+              width: 80px; height: 80px; margin: 0 auto 24px;
+              background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+              border-radius: 24px; display: flex; align-items: center; justify-content: center;
+              box-shadow: 0 12px 24px rgba(16, 185, 129, 0.3);
+            }
+            .logo-icon {
+              width: 40px; height: 40px; fill: white;
+            }
+            .brand-name {
+              font-size: 14px; font-weight: 800; color: var(--primary);
+              text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px;
+            }
+            h2 { margin: 0 0 12px; font-weight: 800; font-size: 28px; letter-spacing: -0.5px; }
+            p { color: var(--text-light); margin: 0 0 32px; font-size: 16px; line-height: 1.6; padding: 0 10px; }
+            .button {
+              display: inline-flex; align-items: center; justify-content: center;
+              background: var(--text); color: white; text-decoration: none;
+              padding: 18px 32px; border-radius: 20px; font-weight: 700; font-size: 16px;
+              transition: all 0.3s ease; border: none; cursor: pointer; width: 100%;
+              box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            }
+            .button:hover { transform: translateY(-2px); box-shadow: 0 15px 30px rgba(0,0,0,0.15); }
+            .button:active { transform: translateY(0); }
+            .status-dot {
+              display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+              background: var(--primary); margin-right: 8px;
+              animation: pulse 2s infinite;
+            }
+            @keyframes pulse {
+              0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+              70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+              100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
             }
           </style>
         </head>
         <body>
+          <div class="background-blur"></div>
           <div class="card">
-            <div class="spinner"></div>
-            <h2>Syncing Google Fit...</h2>
-            <p id="status">Hang tight, returning to app.</p>
-            <a href="${deepLink}" class="btn" id="manualBtn">Return to App Now</a>
-            <script>
-              const deepLink = "${deepLink}";
-              
-              // ⚡ INSTANT REDIRECT V2
-              // Many browsers (Android Chrome) require user gesture, 
-              // but we try window.location.replace first as it's cleaner.
-              setTimeout(() => {
-                window.location.replace(deepLink);
-              }, 500);
-
-              // 🛡️ Fail-safe: If window hasn't blurred (app hasn't opened), vibrate button
-              setTimeout(() => {
-                document.getElementById('status').textContent = "If the app didn't open automatically, please tap below:";
-                document.getElementById('manualBtn').style.transform = 'scale(1.05)';
-              }, 2500);
-            </script>
+            <div class="brand-name">SweetTrack AI</div>
+            <div class="logo-container">
+              <svg class="logo-icon" viewBox="0 0 24 24">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+              </svg>
+            </div>
+            <h2>Successfully Synced!</h2>
+            <p>Your health data is now synchronized with SweetTrack AI for deep clinical analysis.</p>
+            <button class="button" onclick="returnToApp()">
+              Return to App
+            </button>
           </div>
+          <script>
+            function returnToApp() {
+              const deepLink = "${deepLink}";
+              window.location.replace(deepLink);
+              // Fallback for some browsers
+              setTimeout(() => {
+                window.location.href = deepLink;
+              }, 500);
+            }
+            
+            // Auto redirect after a short delay
+            setTimeout(returnToApp, 2500);
+          </script>
         </body>
       </html>
     `);
@@ -459,10 +505,19 @@ export const syncHealthData = async (req, res) => {
       }
     }
 
-    // Get today's date range
-    const endTime = new Date();
-    const startTime = new Date();
-    startTime.setHours(0, 0, 0, 0);
+    const { date: dateStr } = req.body;
+    
+    // Define 24h window for the sync based on client date or current server time
+    let startTime, endTime;
+    if (dateStr) {
+      startTime = new Date(`${dateStr}T00:00:00.000Z`);
+      endTime = new Date(`${dateStr}T23:59:59.999Z`);
+    } else {
+      endTime = new Date();
+      startTime = new Date();
+      startTime.setHours(0, 0, 0, 0);
+    }
+
 
     // Fetch data from Google Fit - handle errors gracefully
     const [
@@ -493,26 +548,37 @@ export const syncHealthData = async (req, res) => {
     // Get meals calories for today
     const caloriesConsumed = await getDailyMealCalories(userId, new Date());
 
+    // Fetch existing metric to prevent overwriting manual non-zero values with synced zeros
+    const existingMetric = await HealthMetric.findOne({
+      user: userId,
+      date: { $gte: startTime, $lte: endTime },
+    });
+
+    const updateFields = {
+      user: userId,
+      syncedAt: new Date(),
+      caloriesConsumed, // Always sync from meal logs
+    };
+
+    // Only update steps/calories/sleep if Google Fit has non-zero data OR if no data exists yet
+    if (steps > 0 || !existingMetric) updateFields.steps = steps || 0;
+    if (calories > 0 || !existingMetric) updateFields.calories = calories || 0;
+    if (sleep > 0 || !existingMetric) updateFields.sleepHours = sleep || 0;
+    
+    if (heartRateAvg) updateFields.heartRateAvg = heartRateAvg;
+    if (bloodGlucose) updateFields.bloodGlucose = bloodGlucose;
+    if (bloodPressure) updateFields.bloodPressure = bloodPressure;
+
     // Persist a daily snapshot
     await HealthMetric.findOneAndUpdate(
       {
         user: userId,
         date: { $gte: startTime, $lte: endTime },
       },
-      {
-        user: userId,
-        source: "google_fit",
-        steps: steps || 0,
-        calories: calories || 0, // This is calories burned from Google Fit
-        caloriesConsumed, // This is calories intake from MealLog
-        sleepHours: sleep || 0,
-        heartRateAvg,
-        bloodGlucose: bloodGlucose || null,
-        bloodPressure: bloodPressure || undefined,
-        syncedAt: new Date(),
-      },
-      { upsert: true, new: true }
+      { $set: updateFields },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
     );
+
 
     // Update last sync time
     googleFit.lastSync = new Date();
@@ -650,13 +716,21 @@ export const backgroundSyncGoogleFit = async () => {
       gf.lastSync = new Date();
       await gf.save();
     } catch (error) {
-      console.error(
-        "[Background Google Fit sync] error for user",
-        gf.user,
-        error?.message || error
-      );
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
+      if (
+        error?.response?.status === 401 || 
+        error?.response?.status === 403 ||
+        error?.error === 'invalid_grant' ||
+        error?.status === 400 ||
+        error?.message?.includes('Refresh token is invalid') ||
+        error?.message?.includes('re-authorize')
+      ) {
         await GoogleFit.findByIdAndUpdate(gf._id, { isActive: false });
+      } else {
+        console.error(
+          "[Background Google Fit sync] unexpected error for user",
+          gf.user,
+          error?.message || error
+        );
       }
     }
   }
