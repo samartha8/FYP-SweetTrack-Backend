@@ -72,10 +72,35 @@ const healthSchema = new mongoose.Schema({
     min: 3.5,
     max: 15.0
   },
+  hba1cSource: {
+    type: String,
+    enum: ['manual', 'report'],
+    default: 'manual'
+  },
   bloodGlucoseEstimated: {
     type: Number, // mg/dL
     min: 70,
     max: 300
+  },
+  glucoseSource: {
+    type: String,
+    enum: ['manual', 'report'],
+    default: 'manual'
+  },
+  bpSource: {
+    type: String,
+    enum: ['manual', 'report'],
+    default: 'manual'
+  },
+  bmiSource: {
+    type: String,
+    enum: ['manual', 'report'],
+    default: 'manual'
+  },
+  demographicsSource: {
+    type: String,
+    enum: ['manual', 'report'],
+    default: 'manual'
   }
 }, { timestamps: true });
 
