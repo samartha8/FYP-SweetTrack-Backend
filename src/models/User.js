@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 
 const userSchema = new mongoose.Schema(
@@ -78,10 +78,16 @@ const userSchema = new mongoose.Schema(
       default: []
     },
 
+    redeemedRewards: {
+      type: [String],
+      default: []
+    },
+
     lastActivityDate: {
       type: Date,
       default: null
     },
+
 
     settings: {
       type: mongoose.Schema.Types.ObjectId,
@@ -107,6 +113,12 @@ const userSchema = new mongoose.Schema(
  */
 userSchema.pre('save', async function () {
   if (!this.isModified('password') || !this.password) return;
+
+  // Safety check: Don't hash if it already looks like a bcrypt hash
+  // (Prevents double-hashing if save() is called unexpectedly)
+  if (this.password.startsWith('$2b$') || this.password.startsWith('$2a$')) {
+    return;
+  }
 
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
