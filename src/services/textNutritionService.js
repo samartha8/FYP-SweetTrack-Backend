@@ -16,6 +16,77 @@ try {
     console.error('❌ Failed to load nutrition_lookup.json in textService:', err.message);
 }
 
+const NUMBER_WORDS = {
+    a: 1,
+    an: 1,
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10
+};
+
+const getQuantity = (segment) => {
+    const wordsArray = segment.split(/\s+/);
+    for (const w of wordsArray) {
+        if (!isNaN(parseInt(w))) return parseInt(w);
+        if (NUMBER_WORDS[w]) return NUMBER_WORDS[w];
+    }
+    return 1;
+};
+
+const getPortionScale = (segment) => {
+    if (segment.includes('big') || segment.includes('large') || segment.includes('heavy')) {
+        return { scalar: 1.4, sizeLabel: 'Big' };
+    }
+    if (segment.includes('small') || segment.includes('tiny') || segment.includes('little')) {
+        return { scalar: 0.7, sizeLabel: 'Small' };
+    }
+    return { scalar: 1.0, sizeLabel: 'Standard' };
+};
+
+const singularize = (word) => (
+    word.endsWith('s') && word.length > 3 ? word.slice(0, -1) : word
+);
+
+const findBestFoodKey = (segment, keys) => {
+    const words = segment
+        .split(/\s+/)
+        .map(w => singularize(w.replace(/[^a-z0-9]/g, '')))
+        .filter(w => w.length > 1);
+
+    let best = null;
+    let bestScore = 0;
+
+    for (const key of keys) {
+        const searchableKey = key.replace(/_/g, ' ');
+        const keyParts = searchableKey.split(/\s+/);
+        const base = keyParts[0];
+        let score = 0;
+
+        if (segment.includes(searchableKey)) {
+            score = 1000 + searchableKey.length;
+        } else if (words.includes(base)) {
+            score = 500 + base.length;
+            if (key.includes('yellow') || key.includes('round') || key.includes('white')) score += 5;
+        } else if (words.some(w => keyParts.includes(w))) {
+            score = 150;
+        }
+
+        if (score > bestScore) {
+            best = key;
+            bestScore = score;
+        }
+    }
+
+    return best;
+};
+
 /**
  * Local NLP Service: Maps user descriptions to nutritionDb keys using keyword matching.
  */
@@ -24,67 +95,51 @@ export const analyzeTextLocally = (text) => {
 
     const lowerText = text.toLowerCase();
     const foundItems = [];
-    
-    // 1. Portion Detection
-    let scalar = 1.0;
-    let sizeLabel = 'Standard';
 
-    if (lowerText.includes('big') || lowerText.includes('large') || lowerText.includes('heavy')) {
-        scalar = 1.4;
-        sizeLabel = 'Big';
-    } else if (lowerText.includes('small') || lowerText.includes('tiny') || lowerText.includes('little')) {
-        scalar = 0.7;
-        sizeLabel = 'Small';
-    }
-
-    // 1.5. Quantity Detection
-    let quantity = 1;
-    const numberWords = { 'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10 };
-    const wordsArray = lowerText.split(/\s+/);
-    for (const w of wordsArray) {
-        if (!isNaN(parseInt(w))) {
-            quantity = parseInt(w);
-            break;
-        } else if (numberWords[w]) {
-            quantity = numberWords[w];
-            break;
-        }
-    }
+    // 1. Split multi-food descriptions into item-like segments.
+    // Example: "2 slices of pizza and one banana" -> ["2 slices of pizza", "one banana"]
+    const segments = lowerText
+        .split(/\s*(?:,|\+|&|\band\b|\bwith\b)\s*/i)
+        .map(s => s.trim())
+        .filter(Boolean);
 
     // 2. Keyword Search
-    // We sort keys by length (descending) so "apple_ligol" matches before "apple"
+    // We sort keys by length (descending) so exact longer names match before generic names.
     const keys = Object.keys(nutritionDb).sort((a, b) => b.length - a.length);
 
-    for (const key of keys) {
-        // Replace underscores with spaces for natural matching (e.g., "apple fuji")
-        const searchableKey = key.replace(/_/g, ' ');
-        
-        if (lowerText.includes(searchableKey)) {
-            const nutrition = nutritionDb[key];
-            
-            foundItems.push({
-                name: searchableKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-                class: key,
-                category: nutrition.category,
-                confidence: 1.0, // Manual entries are considered 100% intentional
-                portionSize: sizeLabel,
-                scalar: scalar,
-                count: quantity,
-                perItemNutrition: {
-                    calories: parseFloat(((nutrition.calories || 0) * scalar).toFixed(1)),
-                    protein: parseFloat(((nutrition.protein_g || 0) * scalar).toFixed(1)),
-                    fat: parseFloat(((nutrition.fat_g || 0) * scalar).toFixed(1)),
-                    carbs: parseFloat(((nutrition.carbs_g || 0) * scalar).toFixed(1)),
-                    fiber: parseFloat(((nutrition.fiber_g || 0) * scalar).toFixed(1)),
-                    sugar: parseFloat(((nutrition.sugar_g || 0) * scalar).toFixed(1)),
-                    sodium: parseFloat(((nutrition.sodium_mg || 0) * scalar).toFixed(1))
-                }
-            });
+    for (const segment of segments) {
+        const key = findBestFoodKey(segment, keys);
+        if (!key) continue;
 
-            // Prevent matching the same substring twice
-            // (e.g. if we matched "apple ligol", don't match "apple" separately)
-            break; 
+        const searchableKey = key.replace(/_/g, ' ');
+        const nutrition = nutritionDb[key];
+        const { scalar, sizeLabel } = getPortionScale(segment);
+        const quantity = getQuantity(segment);
+
+        if (foundItems.some(item => item.class === key)) {
+            const existing = foundItems.find(item => item.class === key);
+            existing.count += quantity;
+            continue;
         }
+
+        foundItems.push({
+            name: searchableKey.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+            class: key,
+            category: nutrition.category,
+            confidence: 1.0, // Manual entries are considered 100% intentional
+            portionSize: sizeLabel,
+            scalar: scalar,
+            count: quantity,
+            perItemNutrition: {
+                calories: parseFloat(((nutrition.calories || 0) * scalar).toFixed(1)),
+                protein: parseFloat(((nutrition.protein_g || 0) * scalar).toFixed(1)),
+                fat: parseFloat(((nutrition.fat_g || 0) * scalar).toFixed(1)),
+                carbs: parseFloat(((nutrition.carbs_g || 0) * scalar).toFixed(1)),
+                fiber: parseFloat(((nutrition.fiber_g || 0) * scalar).toFixed(1)),
+                sugar: parseFloat(((nutrition.sugar_g || 0) * scalar).toFixed(1)),
+                sodium: parseFloat(((nutrition.sodium_mg || 0) * scalar).toFixed(1))
+            }
+        });
     }
 
     if (foundItems.length === 0) {
@@ -118,6 +173,7 @@ export const analyzeTextLocally = (text) => {
 
     const exampleFood = foundItems[0]?.name || 'item';
     const nameLower = exampleFood.toLowerCase();
+    const overallSizeLabel = foundItems.find(item => item.portionSize !== 'Standard')?.portionSize || 'Standard';
     let servingExample = "1 whole item";
     
     if (nameLower.includes('pizza') || nameLower.includes('pie') || nameLower.includes('cake')) {
@@ -136,7 +192,7 @@ export const analyzeTextLocally = (text) => {
             ...aggregated,
             calories: Math.round(aggregated.calories)
         },
-        servingSize: sizeLabel === 'Standard' ? `1 Standard Serving (${servingExample})` : sizeLabel,
+        servingSize: overallSizeLabel === 'Standard' ? `1 Standard Serving (${servingExample})` : overallSizeLabel,
         healthTips: [
             `Note: Values represent 1 standard serving of ${exampleFood} (typically ${servingExample}). If you ate a different amount, please specify the quantity (e.g. '3 portions of ${exampleFood}').`
         ],
