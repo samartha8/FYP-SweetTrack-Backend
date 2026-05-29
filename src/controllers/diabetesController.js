@@ -217,12 +217,15 @@ export const predictDiabetes = async (req, res) => {
                 // Rule: Start at 0%. ONLY 'report' sources provide percentage points.
                 let finalConfidence = 0;
                 
-                // Use sources from the DATABASE record to ensure manual edits reset confidence
-                const h1Source = persistentHealth?.hba1cSource || hba1cSource;
-                const gSource = persistentHealth?.glucoseSource || glucoseSource;
-                const bSource = persistentHealth?.bpSource || req.body.bpSource;
-                const bmSource = persistentHealth?.bmiSource || req.body.bmiSource;
-                const dSource = persistentHealth?.demographicsSource || req.body.demographicsSource;
+                // Prefer freshly scanned report flags from this request; otherwise use the saved Health record.
+                const preferReportSource = (requestSource, savedSource) => (
+                    requestSource === 'report' ? 'report' : (savedSource || requestSource)
+                );
+                const h1Source = preferReportSource(hba1cSource, persistentHealth?.hba1cSource);
+                const gSource = preferReportSource(glucoseSource, persistentHealth?.glucoseSource);
+                const bSource = preferReportSource(req.body.bpSource, persistentHealth?.bpSource);
+                const bmSource = preferReportSource(req.body.bmiSource, persistentHealth?.bmiSource);
+                const dSource = preferReportSource(req.body.demographicsSource, persistentHealth?.demographicsSource);
 
                 // 1. TOP PRIORITY: HbA1c (Long-term metabolic proof)
                 if (h1Source === 'report') finalConfidence += 30;
