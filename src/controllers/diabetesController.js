@@ -36,7 +36,7 @@ export const getLatestPrediction = async (req, res) => {
             inputData: prediction.inputData,
             timestamp: prediction.createdAt,
             mode: prediction.mode || 'LIFESTYLE',
-            confidenceScore: prediction.confidenceScore || 70
+            confidenceScore: prediction.confidenceScore ?? 70
         });
 
     } catch (error) {
