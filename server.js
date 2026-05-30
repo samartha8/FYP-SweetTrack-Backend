@@ -63,18 +63,11 @@ import { evaluateGoalsForAllUsers } from './src/controllers/notificationControll
 import { backgroundSyncGoogleFit } from './src/controllers/googleFitController.js';
 
 const app = express();
-// ... (omitting middleware for brevity as standard replace tool usage)
-// ...
-// ... (I will use multi_replace for this if standard fails or I need to be precise)
-
-// I will actually use a smaller chunk to be safe with standard replace_file_content
-
 
 // ========================================
 // MIDDLEWARE
 // ========================================
 
-// CORS configuration - More permissive for development
 // CORS configuration - Explicit origins for credentials support
 const allowedOrigins = [
   'http://localhost:8081',
@@ -128,7 +121,11 @@ app.use((req, res, next) => {
 app.use(passport.initialize());
 
 // Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res) => {
+    res.set('ngrok-skip-browser-warning', 'true');
+  }
+}));
 
 // ========================================
 // MONGODB CONNECTION
