@@ -51,19 +51,25 @@ backend/
 
 ---
 
-## 🧠 Machine Learning & Data Science Notebooks
+## 🧠 Machine Learning & Model Training
 
-The backend directory contains three major Jupyter Notebooks that outline the training pipeline of SweetTrack's intelligence engines:
+This repository employs machine learning to drive its key health and nutrition features. Below is a breakdown of the models trained, evaluated, and deployed in production:
 
-### 1. **Diabetes Risk Classification** (`Diabetes_CDC_BRFSS_FIXED.ipynb`)
-*   **Dataset**: CDC Behavioral Risk Factor Surveillance System (BRFSS), consisting of hundreds of thousands of entries tracking lifestyle health factors.
-*   **Training & Pipeline**: Evaluates multiple classification models (Logistic Regression, Decision Trees, Random Forests, and XGBoost).
-*   **Implementation**: Exports the trained classifier to `ml_models/diabetes_model.pkl` along with feature lists mapping `feature_names.json`.
-*   **Explainable AI (XAI)**: Includes correlation evaluations to outline which factors (e.g., Blood Pressure, High Cholesterol, BMI) carry the highest weight in risk prediction.
+### 1. **Diabetes Risk Prediction Model (XGBoost Classifier)**
+*   **The Model**: An **XGBoost Classifier** (`XGBClassifier`), an optimized gradient-boosting decision tree algorithm selected for its outstanding accuracy and stability on tabular medical data.
+*   **The Dataset**: Trained using data from the **CDC Behavioral Risk Factor Surveillance System (BRFSS)**.
+*   **Input Features (11 Parameters)**:
+    - *Lifestyle Indicators*: BMI, Age Category, High Blood Pressure, High Cholesterol, Smoking History, Physical Activity, Heart Disease History, General Health self-rating, and Sex.
+    - *Clinical Biomarkers*: HbA1c and Estimated Blood Glucose levels.
+*   **How it Works in Production**: 
+    - The Node backend executes `predict.py` as a child process.
+    - The model calculates risk probability in real-time.
+    - **Explainable AI (XAI)**: The script inspects the model's feature importances to highlight the top two factors causing elevated risk (e.g., *High BMI*, *Low Physical Activity*) for clear patient insights.
 
-### 2. **Food Catalog & Vision Model** (`SmartMealLog_FINAL_Nutrition.ipynb` / `SmartMealLog_Unified_Training.ipynb`)
-*   **Training & Segmentations**: Explores food image segmentation utilizing **MobileSAM (Segment Anything Model)** and compiles classification benchmarks.
-*   **Implementation**: Produces the deep learning model (`model.keras`) along with classification mappings (`class_names.json` / `nutrition_lookup.json`) containing standard calorie, protein, fat, and sugar contents per serving.
+### 2. **Dual-Mode AI Food Segmentation & Classification**
+*   **The Segmentation Model**: **MobileSAM (Segment Anything Model)** (`mobile_sam.pt`). MobileSAM is a lightweight version of Meta's SAM optimized for edge devices. It automatically isolates and segments food items in images.
+*   **The Classification Model**: A custom **Keras Convolutional Neural Network (CNN)** (`model.keras`) trained to classify distinct food items.
+*   **Nutritional Mapping**: Resolved class names are cross-referenced with `nutrition_lookup.json` to calculate macro-nutrients (Carbs, Protein, Fat, Fiber, Sugar, Sodium, Calories) scaling automatically with user-selected portion sizes (Small, Standard, Big).
 
 ---
 
